@@ -12,5 +12,11 @@ package body Animal is
       Animal_Actions.Speak (Self);
    end Speak;
 
+   overriding
+   function Class_Name (Self : T) return String is
+      pragma Unreferenced (Self);
+   begin
+      return "Animal";
+   end Class_Name;
 
 end Animal;
