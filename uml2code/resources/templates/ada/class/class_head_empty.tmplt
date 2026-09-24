@@ -1,1 +1,0 @@
-   type @_NAME_@ is@_ABSTRACT_@ @_DERIVATION_@ null record;
