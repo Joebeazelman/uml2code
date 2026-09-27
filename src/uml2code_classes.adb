@@ -26,560 +26,584 @@ package body Uml2Code_Classes is
     package Package_Name_Sets is new
        Ada.Containers.Indefinite_Ordered_Sets (String);
 
-   use type UML.Model.Element_Kind;
-   use type UML.Model.Relation_Kind;
-   use type UML.Model.Element_Index;
-   use type UML.Model.Element_Index_Vectors.Vector;
+    use type UML.Model.Element_Kind;
+    use type UML.Model.Relation_Kind;
+    use type UML.Model.Element_Index;
+    use type UML.Model.Element_Index_Vectors.Vector;
 
-   function Id_Of
-     (D : UML.Model.Diagram; Idx : UML.Model.Element_Index) return String is
-   begin
-      if Idx = 0 or else Positive (Idx) > Natural (D.Elements.Length) then
-         return "";
-      end if;
-      return To_String (D.Elements (Positive (Idx)).Id);
-   end Id_Of;
+    function Id_Of
+      (D : UML.Model.Diagram; Idx : UML.Model.Element_Index) return String is
+    begin
+       if Idx = 0 or else Positive (Idx) > Natural (D.Elements.Length) then
+          return "";
+       end if;
+       return To_String (D.Elements (Positive (Idx)).Id);
+    end Id_Of;
 
-   procedure Generate
-     (D : UML.Model.Diagram; Source_Diagram : String; Out_Dir : String)
-   is
-      Env : Jintp.Environment;
-   begin
-      Generate (D, Source_Diagram, Out_Dir, Env);
-   end Generate;
+    function Package_Exists
+      (D : UML.Model.Diagram; Name : String) return Boolean
+    is
+    begin
+       if Name = "" then
+          return False;
+       end if;
 
-   procedure Generate
-     (D              : UML.Model.Diagram;
-      Source_Diagram : String;
-      Out_Dir        : String;
-      Env            : in out Jintp.Environment)
-   is
-      Date_Str : constant String := Today;
+       for I in 1 .. Natural (D.Elements.Length) loop
+          if D.Elements (I).Kind = UML.Model.Package_Kind
+            and then To_String (D.Elements (I).Id) = Name
+          then
+             return True;
+          end if;
+       end loop;
 
-      procedure Emit_Package
-        (Pkg_Name : String;
-         Indices  : UML.Model.Element_Index_Vectors.Vector;
-         Out_Dir  : String)
-      is
-         Dict           : Dictionary;
-         Interface_List : List;
-         Enum_List      : List;
-         Class_List     : List;
-         Body_Function_List : List;
-         Body_Procedure_List : List;
-         Use_Packages   : Package_Name_Sets.Set;
-         Use_Package_List : List;
+       --  Root-level generation synthesizes a Model package even when the
+       --  diagram itself is unnamed. Do not invent arbitrary package names
+       --  such as Zoo purely to satisfy a regression test.
+       return Name = "Model";
+    end Package_Exists;
 
-         function Element_Package
-           (Index : UML.Model.Element_Index) return String
-         is
-         begin
-            if Index = 0
-              or else Positive (Index) > Natural (D.Elements.Length)
-            then
-               return "";
-            elsif D.Elements (Positive (Index)).Parent = 0 then
-               return "Model";
-            else
-               return Id_Of (D, D.Elements (Positive (Index)).Parent);
-            end if;
-         end Element_Package;
+    procedure Generate
+      (D : UML.Model.Diagram; Source_Diagram : String; Out_Dir : String)
+    is
+       Env : Jintp.Environment;
+    begin
+       Generate (D, Source_Diagram, Out_Dir, Env);
+    end Generate;
 
-         procedure Include_Package_For
-           (Index : UML.Model.Element_Index)
-         is
-            Pkg : constant String := Element_Package (Index);
-         begin
-            if Pkg'Length > 0 and then Pkg /= Pkg_Name then
-               Use_Packages.Include (Pkg);
-            end if;
-         end Include_Package_For;
+    procedure Generate
+      (D              : UML.Model.Diagram;
+       Source_Diagram : String;
+       Out_Dir        : String;
+       Env            : in out Jintp.Environment)
+    is
+       Date_Str : constant String := Today;
 
-         procedure Include_Package_For_Type (Type_Name : String) is
-         begin
-            for I in 1 .. Natural (D.Elements.Length) loop
-               if To_String (D.Elements (I).Id) = Type_Name then
-                  Include_Package_For (UML.Model.Element_Index (I));
-                  return;
-               end if;
-            end loop;
-         end Include_Package_For_Type;
-      begin
-         for Idx of Indices loop
-            if Idx /= 0
-              and then Positive (Idx) <= Natural (D.Elements.Length)
-            then
-               declare
-                  Elem : UML.Model.Element renames
-                    D.Elements (Positive (Idx));
-               begin
-                  for M of Elem.Members loop
-                     if M.Kind in UML.Model.Attribute | UML.Model.Method then
-                        Include_Package_For_Type
-                          (To_String (M.Type_Name));
-                     end if;
-                  end loop;
-                  for R of D.Relations loop
-                     if R.From = Idx
-                       and then R.Kind in
-                         UML.Model.Composition
-                         | UML.Model.Association
-                         | UML.Model.Aggregation
-                     then
-                        Include_Package_For (R.To);
-                     elsif R.To = Idx
-                       and then R.Kind in
-                         UML.Model.Inheritance | UML.Model.Realization
-                     then
-                        Include_Package_For (R.From);
-                     end if;
-                  end loop;
-               end;
-            end if;
-         end loop;
-         for Pkg of Use_Packages loop
-            declare
-               Package_Dict : Dictionary;
-            begin
-               Insert (Package_Dict, "name", Pkg);
-               Append (Use_Package_List, Package_Dict);
-            end;
-         end loop;
+       procedure Emit_Package
+         (Pkg_Name : String;
+          Indices  : UML.Model.Element_Index_Vectors.Vector;
+          Out_Dir  : String)
+       is
+          Dict           : Dictionary;
+          Interface_List : List;
+          Enum_List      : List;
+          Class_List     : List;
+          Body_Function_List : List;
+          Body_Procedure_List : List;
+          Use_Packages   : Package_Name_Sets.Set;
+          Use_Package_List : List;
 
-         --  Package-level context (raw values, no formatting)
-         Insert (Dict, "PACKAGE_NAME", Pkg_Name);
-         Insert (Dict, "use_packages", Use_Package_List);
-         Insert (Dict, "GENERATION_DATE", Date_Str);
-         Insert (Dict, "SOURCE_DIAGRAM", Source_Diagram);
-         Insert (Dict, "TITLE_LINE", Title_Of (D));
-         Insert
-           (Dict,
-            "comment_lines",
-            Uml2Code_Comments.Comment_Lines
-              (Notes_Of (D), Uml2Code_Template_Path.Comment_Wrap));
+          function Element_Package
+            (Index : UML.Model.Element_Index) return String
+          is
+          begin
+             if Index = 0
+               or else Positive (Index) > Natural (D.Elements.Length)
+             then
+                return "";
+             elsif D.Elements (Positive (Index)).Parent = 0 then
+                return "Model";
+             else
+                return Id_Of (D, D.Elements (Positive (Index)).Parent);
+             end if;
+          end Element_Package;
 
-         --  Build separate lists for each element kind
-         for Idx of Indices loop
-            if Idx = 0 or else Positive (Idx) > Natural (D.Elements.Length)
-            then
-               goto Continue_Element;
-            end if;
+          procedure Include_Package_For
+            (Index : UML.Model.Element_Index)
+          is
+             Pkg : constant String := Element_Package (Index);
+          begin
+             if Pkg'Length > 0 and then Pkg /= Pkg_Name
+               and then Package_Exists (D, Pkg)
+             then
+                Use_Packages.Include (Pkg);
+             end if;
+          end Include_Package_For;
 
-            declare
-               Elem       : UML.Model.Element renames
-                 D.Elements (Positive (Idx));
-               E_Dict     : Dictionary;
-               Attr_List  : List;
-               Meth_List  : List;
-               Rel_List   : List;
-               Lit_List   : List;
-               Has_Fields : Boolean := False;
-               Name       : constant String := To_String (Elem.Id);
-            begin
-               --  Raw identifiers - templates apply filters
-               Insert (E_Dict, "name", Name);
-               Insert (E_Dict, "kind", Elem.Kind'Image);
-               Insert
-                 (E_Dict, "is_abstract", Elem.Kind = UML.Model.Abstract_Class);
+          procedure Include_Package_For_Type (Type_Name : String) is
+          begin
+             for I in 1 .. Natural (D.Elements.Length) loop
+                if To_String (D.Elements (I).Id) = Type_Name then
+                   Include_Package_For (UML.Model.Element_Index (I));
+                   return;
+                end if;
+             end loop;
+          end Include_Package_For_Type;
+       begin
+          for Idx of Indices loop
+             if Idx /= 0
+               and then Positive (Idx) <= Natural (D.Elements.Length)
+             then
+                declare
+                   Elem : UML.Model.Element renames
+                     D.Elements (Positive (Idx));
+                begin
+                   for M of Elem.Members loop
+                      if M.Kind in UML.Model.Attribute | UML.Model.Method then
+                         Include_Package_For_Type
+                           (To_String (M.Type_Name));
+                      end if;
+                   end loop;
+                   for R of D.Relations loop
+                      if R.From = Idx
+                        and then R.Kind in
+                          UML.Model.Composition
+                          | UML.Model.Association
+                          | UML.Model.Aggregation
+                      then
+                         Include_Package_For (R.To);
+                      elsif R.To = Idx
+                        and then R.Kind in
+                          UML.Model.Inheritance | UML.Model.Realization
+                      then
+                         Include_Package_For (R.From);
+                      end if;
+                   end loop;
+                end;
+             end if;
+          end loop;
+          for Pkg of Use_Packages loop
+             declare
+                Package_Dict : Dictionary;
+             begin
+                Insert (Package_Dict, "name", Pkg);
+                Append (Use_Package_List, Package_Dict);
+             end;
+          end loop;
 
-               declare
-                  Comments : Unbounded_String;
-               begin
-                  for Note of Elem.Notes loop
-                     if Length (Comments) > 0 then
-                        Append (Comments, ASCII.LF);
-                     end if;
-                     Append (Comments, Note.Text);
-                  end loop;
-                  Insert
-                    (E_Dict,
-                     "comment_lines",
-                     Uml2Code_Comments.Comment_Lines
-                       (To_String (Comments),
-                        Uml2Code_Template_Path.Comment_Wrap));
-               end;
+          --  Package-level context (raw values, no formatting)
+          Insert (Dict, "PACKAGE_NAME", Pkg_Name);
+          Insert (Dict, "use_packages", Use_Package_List);
+          Insert (Dict, "GENERATION_DATE", Date_Str);
+          Insert (Dict, "SOURCE_DIAGRAM", Source_Diagram);
+          Insert (Dict, "TITLE_LINE", Title_Of (D));
+          Insert
+            (Dict,
+             "comment_lines",
+             Uml2Code_Comments.Comment_Lines
+               (Notes_Of (D), Uml2Code_Template_Path.Comment_Wrap));
 
-               --  Find parent via inheritance (raw name)
-               declare
-                  Parent : Unbounded_String;
-               begin
-                  for R of D.Relations loop
-                     if R.Kind = UML.Model.Inheritance
-                       and then Id_Of (D, R.To) = Name
-                     then
-                        Parent := To_Unbounded_String (Id_Of (D, R.From));
-                        exit;
-                     end if;
-                  end loop;
-                  Insert (E_Dict, "parent", To_String (Parent));
-                  Insert (E_Dict, "has_parent", Length (Parent) > 0);
-               end;
+          --  Build separate lists for each element kind
+          for Idx of Indices loop
+             if Idx = 0 or else Positive (Idx) > Natural (D.Elements.Length)
+             then
+                goto Continue_Element;
+             end if;
 
-               --  Find interfaces via realization
-               declare
-                  Iface_List  : List;
-                  Has_Iface   : Boolean := False;
-                  First_Iface : Unbounded_String;
-               begin
-                  for R of D.Relations loop
-                     if R.Kind = UML.Model.Realization
-                       and then Id_Of (D, R.To) = Name
-                     then
-                        Append (Iface_List, Id_Of (D, R.From));
-                        if not Has_Iface then
-                           First_Iface :=
-                             To_Unbounded_String (Id_Of (D, R.From));
-                           Has_Iface := True;
-                        end if;
-                     end if;
-                  end loop;
-                  Insert (E_Dict, "interfaces", Iface_List);
-                  Insert (E_Dict, "has_interface", Has_Iface);
-                  Insert (E_Dict, "first_interface", To_String (First_Iface));
-               end;
+             declare
+                Elem       : UML.Model.Element renames
+                  D.Elements (Positive (Idx));
+                E_Dict     : Dictionary;
+                Attr_List  : List;
+                Meth_List  : List;
+                Rel_List   : List;
+                Lit_List   : List;
+                Has_Fields : Boolean := False;
+                Name       : constant String := To_String (Elem.Id);
+             begin
+                --  Raw identifiers - templates apply filters
+                Insert (E_Dict, "name", Name);
+                Insert (E_Dict, "kind", Elem.Kind'Image);
+                Insert
+                  (E_Dict, "is_abstract", Elem.Kind = UML.Model.Abstract_Class);
 
-               --  Enum literals (raw names)
-               if Elem.Kind = UML.Model.Enumeration then
-                  declare
-                     First_Literal : Boolean := True;
-                  begin
-                  for M of Elem.Members loop
-                     if M.Kind = UML.Model.Enum_Literal then
-                        declare
-                           Lit_Dict : Dictionary;
-                        begin
-                           Insert (Lit_Dict, "name", To_String (M.Id));
-                           Insert
-                             (Lit_Dict,
-                              "separator",
-                              (if First_Literal then "" else ", "));
-                           Append (Lit_List, Lit_Dict);
-                           First_Literal := False;
-                        end;
-                     end if;
-                  end loop;
-                  end;
-               end if;
-               Insert (E_Dict, "literals", Lit_List);
+                declare
+                   Comments : Unbounded_String;
+                begin
+                   for Note of Elem.Notes loop
+                      if Length (Comments) > 0 then
+                         Append (Comments, ASCII.LF);
+                      end if;
+                      Append (Comments, Note.Text);
+                   end loop;
+                   Insert
+                     (E_Dict,
+                      "comment_lines",
+                      Uml2Code_Comments.Comment_Lines
+                        (To_String (Comments),
+                         Uml2Code_Template_Path.Comment_Wrap));
+                end;
 
-               --  Attributes (raw names and types)
-               for M of Elem.Members loop
-                  if M.Kind = UML.Model.Attribute then
-                     declare
-                        A_Dict : Dictionary;
-                     begin
-                        Insert (A_Dict, "name", To_String (M.Id));
-                        Insert (A_Dict, "type", To_String (M.Type_Name));
-                        Append (Attr_List, A_Dict);
-                        Has_Fields := True;
-                     end;
-                  end if;
-               end loop;
-               Insert (E_Dict, "attributes", Attr_List);
+                --  Find parent via inheritance (raw name)
+                declare
+                   Parent : Unbounded_String;
+                begin
+                   for R of D.Relations loop
+                      if R.Kind = UML.Model.Inheritance
+                        and then Id_Of (D, R.To) = Name
+                      then
+                         Parent := To_Unbounded_String (Id_Of (D, R.From));
+                         exit;
+                      end if;
+                   end loop;
+                   Insert (E_Dict, "parent", To_String (Parent));
+                   Insert (E_Dict, "has_parent", Length (Parent) > 0);
+                end;
 
-               --  Consolidated relation and field processing (single pass)
-               declare
-                  Field_Lines : List;
-               begin
-                  --  First, add direct attributes
-                  for M of Elem.Members loop
-                     if M.Kind = UML.Model.Attribute then
-                        declare
-                           Raw_Type : constant String :=
-                             To_String (M.Type_Name);
-                           Ada_Type : constant String :=
-                             (if To_Lower (Raw_Type) = "string"
-                                or else To_Lower (Raw_Type) = "str"
-                              then "Unbounded_String"
-                              else Raw_Type);
-                        begin
-                        Append
-                          (Field_Lines,
-                           "Attr_"
-                           & To_String (M.Id)
-                           & " : "
-                           & Ada_Type
-                           & ";");
-                        end;
-                        Has_Fields := True;
-                     end if;
-                  end loop;
+                --  Find interfaces via realization
+                declare
+                   Iface_List  : List;
+                   Has_Iface   : Boolean := False;
+                   First_Iface : Unbounded_String;
+                begin
+                   for R of D.Relations loop
+                      if R.Kind = UML.Model.Realization
+                        and then Id_Of (D, R.To) = Name
+                      then
+                         Append (Iface_List, Id_Of (D, R.From));
+                         if not Has_Iface then
+                            First_Iface :=
+                              To_Unbounded_String (Id_Of (D, R.From));
+                            Has_Iface := True;
+                         end if;
+                      end if;
+                   end loop;
+                   Insert (E_Dict, "interfaces", Iface_List);
+                   Insert (E_Dict, "has_interface", Has_Iface);
+                   Insert (E_Dict, "first_interface", To_String (First_Iface));
+                end;
 
-                  --  Then, process relations (Composition/Association/Aggregation)
-                  for R of D.Relations loop
-                     if (R.Kind = UML.Model.Composition
-                         or else R.Kind = UML.Model.Association
-                         or else R.Kind = UML.Model.Aggregation)
-                       and then Id_Of (D, R.From) = Name
-                     then
-                        declare
-                           Target         : constant String := Id_Of (D, R.To);
-                           Target_Is_Enum : Boolean := False;
-                           Line           : Unbounded_String;
-                           R_Dict         : Dictionary;
-                        begin
-                           --  Check if target is an enum (only once per relation)
-                           for E of D.Elements loop
-                              if To_String (E.Id) = Target
-                                and then E.Kind = UML.Model.Enumeration
-                              then
-                                 Target_Is_Enum := True;
-                                 exit;
-                              end if;
-                           end loop;
+                --  Enum literals (raw names)
+                if Elem.Kind = UML.Model.Enumeration then
+                   declare
+                      First_Literal : Boolean := True;
+                   begin
+                   for M of Elem.Members loop
+                      if M.Kind = UML.Model.Enum_Literal then
+                         declare
+                            Lit_Dict : Dictionary;
+                         begin
+                            Insert (Lit_Dict, "name", To_String (M.Id));
+                            Insert
+                              (Lit_Dict,
+                               "separator",
+                               (if First_Literal then "" else ", "));
+                            Append (Lit_List, Lit_Dict);
+                            First_Literal := False;
+                         end;
+                      end if;
+                   end loop;
+                   end;
+                end if;
+                Insert (E_Dict, "literals", Lit_List);
 
-                           --  Build field line
-                           if R.Kind = UML.Model.Composition then
-                              Line :=
-                                To_Unbounded_String
-                                  ("Attr_"
-                                   & Target
-                                   & " : "
-                                   & Target
-                                   & "_Vectors.Vector;");
-                           elsif Target_Is_Enum then
-                              Line :=
-                                To_Unbounded_String
-                                  ("Attr_" & Target & " : " & Target & ";");
-                           else
-                              Line :=
-                                To_Unbounded_String
-                                  ("Attr_"
-                                   & Target
-                                   & " : access "
-                                   & Target
-                                   & ";");
-                           end if;
-                           Append (Field_Lines, To_String (Line));
-                           Has_Fields := True;
+                --  Attributes (raw names and types)
+                for M of Elem.Members loop
+                   if M.Kind = UML.Model.Attribute then
+                      declare
+                         A_Dict : Dictionary;
+                      begin
+                         Insert (A_Dict, "name", To_String (M.Id));
+                         Insert (A_Dict, "type", To_String (M.Type_Name));
+                         Append (Attr_List, A_Dict);
+                         Has_Fields := True;
+                      end;
+                   end if;
+                end loop;
+                Insert (E_Dict, "attributes", Attr_List);
 
-                           --  Build relation dictionary for template
-                           Insert (R_Dict, "target", Target);
-                           Insert (R_Dict, "kind", R.Kind'Image);
-                           Insert
-                             (R_Dict,
-                              "is_composition",
-                              R.Kind = UML.Model.Composition);
-                           Insert (R_Dict, "is_enum_target", Target_Is_Enum);
-                           Append (Rel_List, R_Dict);
-                        end;
-                     end if;
-                  end loop;
+                --  Consolidated relation and field processing (single pass)
+                declare
+                   Field_Lines : List;
+                begin
+                   --  First, add direct attributes
+                   for M of Elem.Members loop
+                      if M.Kind = UML.Model.Attribute then
+                         declare
+                            Raw_Type : constant String :=
+                              To_String (M.Type_Name);
+                            Ada_Type : constant String :=
+                              (if To_Lower (Raw_Type) = "string"
+                                 or else To_Lower (Raw_Type) = "str"
+                               then "Unbounded_String"
+                               else Raw_Type);
+                         begin
+                         Append
+                           (Field_Lines,
+                            "Attr_"
+                            & To_String (M.Id)
+                            & " : "
+                            & Ada_Type
+                            & ";");
+                         end;
+                         Has_Fields := True;
+                      end if;
+                   end loop;
 
-                  Insert (E_Dict, "field_lines", Field_Lines);
-                  Insert (E_Dict, "relations", Rel_List);
-               end;
-               Insert (E_Dict, "has_fields", Has_Fields);
+                   --  Then, process relations (Composition/Association/Aggregation)
+                   for R of D.Relations loop
+                      if (R.Kind = UML.Model.Composition
+                          or else R.Kind = UML.Model.Association
+                          or else R.Kind = UML.Model.Aggregation)
+                        and then Id_Of (D, R.From) = Name
+                      then
+                         declare
+                            Target         : constant String := Id_Of (D, R.To);
+                            Target_Is_Enum : Boolean := False;
+                            Line           : Unbounded_String;
+                            R_Dict         : Dictionary;
+                         begin
+                            --  Check if target is an enum (only once per relation)
+                            for E of D.Elements loop
+                               if To_String (E.Id) = Target
+                                 and then E.Kind = UML.Model.Enumeration
+                               then
+                                  Target_Is_Enum := True;
+                                  exit;
+                               end if;
+                            end loop;
 
-               --  Methods (raw names, types, params)
-               for M of Elem.Members loop
-                  if M.Kind = UML.Model.Method then
-                     declare
-                        M_Dict   : Dictionary;
-                        Ret_Type : constant String := To_String (M.Type_Name);
-                     begin
-                        Insert (M_Dict, "name", To_String (M.Id));
-                        Insert (M_Dict, "class_name", Name);
-                        Insert (M_Dict, "return_type", Ret_Type);
-                        Insert (M_Dict, "params", To_String (M.Params));
-                        Insert (M_Dict, "is_abstract", M.Is_Abstract);
-                        Insert (M_Dict, "is_static", M.Is_Static);
-                        Insert
-                          (M_Dict,
-                           "has_return_type",
-                           Ret_Type /= "" and then Ret_Type /= "void");
-                        Append (Meth_List, M_Dict);
-                        if not M.Is_Abstract then
-                           if Ret_Type /= "" and then Ret_Type /= "void" then
-                              Append (Body_Function_List, M_Dict);
-                           else
-                              Append (Body_Procedure_List, M_Dict);
-                           end if;
-                        end if;
-                     end;
-                  end if;
-               end loop;
-               Insert (E_Dict, "methods", Meth_List);
+                            --  Build field line
+                            if R.Kind = UML.Model.Composition then
+                               Line :=
+                                 To_Unbounded_String
+                                   ("Attr_"
+                                    & Target
+                                    & " : "
+                                    & Target
+                                    & "_Vectors.Vector;");
+                            elsif Target_Is_Enum then
+                               Line :=
+                                 To_Unbounded_String
+                                   ("Attr_" & Target & " : " & Target & ";");
+                            else
+                               Line :=
+                                 To_Unbounded_String
+                                   ("Attr_"
+                                    & Target
+                                    & " : access "
+                                    & Target
+                                    & ";");
+                            end if;
+                            Append (Field_Lines, To_String (Line));
+                            Has_Fields := True;
 
-               --  Add to appropriate list based on kind
-               if Elem.Kind = UML.Model.Interface_Kind then
-                  Append (Interface_List, E_Dict);
-               elsif Elem.Kind = UML.Model.Enumeration then
-                  Append (Enum_List, E_Dict);
-               else
-                  Append (Class_List, E_Dict);
-               end if;
-            end;
+                            --  Build relation dictionary for template
+                            Insert (R_Dict, "target", Target);
+                            Insert (R_Dict, "kind", R.Kind'Image);
+                            Insert
+                              (R_Dict,
+                               "is_composition",
+                               R.Kind = UML.Model.Composition);
+                            Insert (R_Dict, "is_enum_target", Target_Is_Enum);
+                            Append (Rel_List, R_Dict);
+                         end;
+                      end if;
+                   end loop;
 
-            <<Continue_Element>>
-         end loop;
+                   Insert (E_Dict, "field_lines", Field_Lines);
+                   Insert (E_Dict, "relations", Rel_List);
+                end;
+                Insert (E_Dict, "has_fields", Has_Fields);
 
-         Insert (Dict, "interfaces", Interface_List);
-         Insert (Dict, "enums", Enum_List);
-         Insert (Dict, "classes", Class_List);
-         Insert (Dict, "body_functions", Body_Function_List);
-         Insert (Dict, "body_procedures", Body_Procedure_List);
+                --  Methods (raw names, types, params)
+                for M of Elem.Members loop
+                   if M.Kind = UML.Model.Method then
+                      declare
+                         M_Dict   : Dictionary;
+                         Ret_Type : constant String := To_String (M.Type_Name);
+                      begin
+                         Insert (M_Dict, "name", To_String (M.Id));
+                         Insert (M_Dict, "class_name", Name);
+                         Insert (M_Dict, "return_type", Ret_Type);
+                         Insert (M_Dict, "params", To_String (M.Params));
+                         Insert (M_Dict, "is_abstract", M.Is_Abstract);
+                         Insert (M_Dict, "is_static", M.Is_Static);
+                         Insert
+                           (M_Dict,
+                            "has_return_type",
+                            Ret_Type /= "" and then Ret_Type /= "void");
+                         Append (Meth_List, M_Dict);
+                         if not M.Is_Abstract then
+                            if Ret_Type /= "" and then Ret_Type /= "void" then
+                               Append (Body_Function_List, M_Dict);
+                            else
+                               Append (Body_Procedure_List, M_Dict);
+                            end if;
+                         end if;
+                      end;
+                   end if;
+                end loop;
+                Insert (E_Dict, "methods", Meth_List);
 
-         --  Collect vector instantiations for composition relations
-         declare
-            Vector_List               : List;
-            Has_Vector_Instantiations : Boolean := False;
-         begin
-            for Idx of Indices loop
-               if Idx /= 0
-                 and then Positive (Idx) <= Natural (D.Elements.Length)
-               then
-                  declare
-                     Elem  : UML.Model.Element renames
-                       D.Elements (Positive (Idx));
-                     EName : constant String := To_String (Elem.Id);
-                  begin
-                     for R of D.Relations loop
-                        if R.Kind = UML.Model.Composition
-                          and then Id_Of (D, R.From) = EName
-                        then
-                           declare
-                              V_Dict : Dictionary;
-                              Target : constant String := Id_Of (D, R.To);
-                           begin
-                              Insert (V_Dict, "element_type", Target);
-                              Insert
-                                (V_Dict, "vector_name", Target & "_Vectors");
-                                             Insert
-                                                (V_Dict,
-                                                 "is_local",
-                                                 Element_Package (R.To) = Pkg_Name);
-                              Append (Vector_List, V_Dict);
-                              Has_Vector_Instantiations := True;
-                           end;
-                        end if;
-                     end loop;
-                  end;
-               end if;
-            end loop;
-            Insert (Dict, "vector_instantiations", Vector_List);
-            Insert
-              (Dict, "has_vector_instantiations", Has_Vector_Instantiations);
-         end;
+                --  Add to appropriate list based on kind
+                if Elem.Kind = UML.Model.Interface_Kind then
+                   Append (Interface_List, E_Dict);
+                elsif Elem.Kind = UML.Model.Enumeration then
+                   Append (Enum_List, E_Dict);
+                else
+                   Append (Class_List, E_Dict);
+                end if;
+             end;
 
-         --  Track if we need Unbounded_String
-         declare
-            Needs_Unbounded : Boolean := False;
-         begin
-            for Idx of Indices loop
-               if Idx /= 0
-                 and then Positive (Idx) <= Natural (D.Elements.Length)
-               then
-                  declare
-                     Elem : UML.Model.Element renames
-                       D.Elements (Positive (Idx));
-                  begin
-                     for M of Elem.Members loop
-                        if M.Kind = UML.Model.Attribute
-                          or else M.Kind = UML.Model.Method
-                        then
-                           declare
-                              T : constant String :=
-                                To_Lower (To_String (M.Type_Name));
-                           begin
-                              if T = "string" or else T = "str" then
-                                 Needs_Unbounded := True;
-                                 exit;
-                              end if;
-                           end;
-                        end if;
-                     end loop;
-                     if Needs_Unbounded then
-                        exit;
-                     end if;
-                  end;
-               end if;
-            end loop;
-            Insert (Dict, "needs_unbounded", Needs_Unbounded);
-         end;
+             <<Continue_Element>>
+          end loop;
 
-         --  Render templates
-         Render_To_Dict
-           ("ada/class",
-            "class.ads.tmplt",
-            Ada.Directories.Compose (Out_Dir, Pkg_Name & ".ads"),
-            Dict,
-            Env);
+          Insert (Dict, "interfaces", Interface_List);
+          Insert (Dict, "enums", Enum_List);
+          Insert (Dict, "classes", Class_List);
+          Insert (Dict, "body_functions", Body_Function_List);
+          Insert (Dict, "body_procedures", Body_Procedure_List);
 
-         Render_To_Dict
-           ("ada/class",
-            "class.adb.tmplt",
-            Ada.Directories.Compose (Out_Dir, Pkg_Name & ".adb"),
-            Dict,
-            Env);
+          --  Collect vector instantiations for composition relations
+          declare
+             Vector_List               : List;
+             Has_Vector_Instantiations : Boolean := False;
+          begin
+             for Idx of Indices loop
+                if Idx /= 0
+                  and then Positive (Idx) <= Natural (D.Elements.Length)
+                then
+                   declare
+                      Elem  : UML.Model.Element renames
+                        D.Elements (Positive (Idx));
+                      EName : constant String := To_String (Elem.Id);
+                   begin
+                      for R of D.Relations loop
+                         if R.Kind = UML.Model.Composition
+                           and then Id_Of (D, R.From) = EName
+                         then
+                            declare
+                               V_Dict : Dictionary;
+                               Target : constant String := Id_Of (D, R.To);
+                            begin
+                               Insert (V_Dict, "element_type", Target);
+                               Insert
+                                 (V_Dict, "vector_name", Target & "_Vectors");
+                               Insert
+                                 (V_Dict,
+                                  "is_local",
+                                  Element_Package (R.To) = Pkg_Name);
+                               Append (Vector_List, V_Dict);
+                               Has_Vector_Instantiations := True;
+                            end;
+                         end if;
+                      end loop;
+                   end;
+                end if;
+             end loop;
+             Insert (Dict, "vector_instantiations", Vector_List);
+             Insert
+               (Dict, "has_vector_instantiations", Has_Vector_Instantiations);
+          end;
 
-      end Emit_Package;
+          --  Track if we need Unbounded_String
+          declare
+             Needs_Unbounded : Boolean := False;
+          begin
+             for Idx of Indices loop
+                if Idx /= 0
+                  and then Positive (Idx) <= Natural (D.Elements.Length)
+                then
+                   declare
+                      Elem : UML.Model.Element renames
+                        D.Elements (Positive (Idx));
+                   begin
+                      for M of Elem.Members loop
+                         if M.Kind = UML.Model.Attribute
+                           or else M.Kind = UML.Model.Method
+                         then
+                            declare
+                               T : constant String :=
+                                 To_Lower (To_String (M.Type_Name));
+                            begin
+                               if T = "string" or else T = "str" then
+                                  Needs_Unbounded := True;
+                                  exit;
+                               end if;
+                            end;
+                         end if;
+                      end loop;
+                      if Needs_Unbounded then
+                         exit;
+                      end if;
+                   end;
+                end if;
+             end loop;
+             Insert (Dict, "needs_unbounded", Needs_Unbounded);
+          end;
 
-   begin
-      Uml2Code_Filters.Register_Filters (Env);
-      Refuse_Crate_Internal_Output (Out_Dir);
-      declare
-         Src_Dir : constant String := Ada.Directories.Compose (Out_Dir, "src");
-      begin
-         Ada.Directories.Create_Path (Src_Dir);
+          --  Render templates
+          Render_To_Dict
+            ("ada/class",
+             "class.ads.tmplt",
+             Ada.Directories.Compose (Out_Dir, Pkg_Name & ".ads"),
+             Dict,
+             Env);
 
-         --  Group elements by package and emit each
-         declare
-            type Pkg_Info is record
-               Name    : Unbounded_String;
-               Indices : UML.Model.Element_Index_Vectors.Vector;
-            end record;
+          Render_To_Dict
+            ("ada/class",
+             "class.adb.tmplt",
+             Ada.Directories.Compose (Out_Dir, Pkg_Name & ".adb"),
+             Dict,
+             Env);
 
-            package Pkg_Vectors is new
-              Ada.Containers.Vectors (Positive, Pkg_Info);
+       end Emit_Package;
 
-            Packages : Pkg_Vectors.Vector;
-         begin
-            for I in 1 .. Natural (D.Elements.Length) loop
-               declare
-                  Elem     : UML.Model.Element renames D.Elements (I);
-                  Pkg_Name : constant String :=
-                    (if Elem.Parent = 0
-                     then "Model"
-                     else Id_Of (D, Elem.Parent));
-                  Found    : Boolean := False;
-               begin
-                  --  Skip package elements themselves
-                  if Elem.Kind = UML.Model.Package_Kind then
-                     goto Continue_Elem;
-                  end if;
+    begin
+       Uml2Code_Filters.Register_Filters (Env);
+       Refuse_Crate_Internal_Output (Out_Dir);
+       declare
+          Src_Dir : constant String := Ada.Directories.Compose (Out_Dir, "src");
+       begin
+          Ada.Directories.Create_Path (Src_Dir);
 
-                  for P in Packages.First_Index .. Packages.Last_Index loop
-                     if To_String (Packages (P).Name) = Pkg_Name then
-                        Packages (P).Indices.Append
-                          (UML.Model.Element_Index (I));
-                        Found := True;
-                        exit;
-                     end if;
-                  end loop;
+          --  Group elements by package and emit each
+          declare
+             type Pkg_Info is record
+                Name    : Unbounded_String;
+                Indices : UML.Model.Element_Index_Vectors.Vector;
+             end record;
 
-                  if not Found then
-                     declare
-                        New_Pkg : Pkg_Info;
-                     begin
-                        New_Pkg.Name := To_Unbounded_String (Pkg_Name);
-                        New_Pkg.Indices.Append (UML.Model.Element_Index (I));
-                        Packages.Append (New_Pkg);
-                     end;
-                  end if;
-               end;
+             package Pkg_Vectors is new
+               Ada.Containers.Vectors (Positive, Pkg_Info);
 
-               <<Continue_Elem>>
-            end loop;
+             Packages : Pkg_Vectors.Vector;
+          begin
+             for I in 1 .. Natural (D.Elements.Length) loop
+                declare
+                   Elem     : UML.Model.Element renames D.Elements (I);
+                   Pkg_Name : constant String :=
+                     (if Elem.Parent = 0
+                      then "Model"
+                      else Id_Of (D, Elem.Parent));
+                   Found    : Boolean := False;
+                begin
+                   --  Skip package elements themselves
+                   if Elem.Kind = UML.Model.Package_Kind then
+                      goto Continue_Elem;
+                   end if;
 
-            for P in Packages.First_Index .. Packages.Last_Index loop
-               Emit_Package
-                 (To_String (Packages (P).Name),
-                  Packages (P).Indices,
-                  Src_Dir);
-            end loop;
-         end;
-      end;
-   end Generate;
+                   for P in Packages.First_Index .. Packages.Last_Index loop
+                      if To_String (Packages (P).Name) = Pkg_Name then
+                         Packages (P).Indices.Append
+                           (UML.Model.Element_Index (I));
+                         Found := True;
+                         exit;
+                      end if;
+                   end loop;
+
+                   if not Found then
+                      declare
+                         New_Pkg : Pkg_Info;
+                      begin
+                         New_Pkg.Name := To_Unbounded_String (Pkg_Name);
+                         New_Pkg.Indices.Append (UML.Model.Element_Index (I));
+                         Packages.Append (New_Pkg);
+                      end;
+                   end if;
+                end;
+
+                <<Continue_Elem>>
+             end loop;
+
+             for P in Packages.First_Index .. Packages.Last_Index loop
+                Emit_Package
+                  (To_String (Packages (P).Name),
+                   Packages (P).Indices,
+                   Src_Dir);
+             end loop;
+          end;
+       end;
+    end Generate;
 
 end Uml2Code_Classes;
