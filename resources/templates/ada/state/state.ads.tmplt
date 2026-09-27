@@ -1,12 +1,12 @@
-{{ DESCRIPTION }}
-{{ GENERATION_DATE }}
-{{ SOURCE_DIAGRAM }}
+--  {{ DESCRIPTION }}
+--  {{ GENERATION_DATE }}
+--  {{ SOURCE_DIAGRAM }}
 {%- if HAS_TITLE %}
-{{ TITLE }}
+--  {{ TITLE }}
 {%- endif %}
 {%- if HAS_NOTES %}
 {% for comment_line in comment_lines %}
-{{ comment_line.text }}
+--  {{ comment_line.text }}
 {%- endfor %}
 {%- endif %}
 {% for composite in composite_states %}

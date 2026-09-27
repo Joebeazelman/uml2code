@@ -1,11 +1,9 @@
-with Ada.Text_IO;
-with Ada.Directories;              use Ada.Text_IO;
+with Ada.Text_IO;              use Ada.Text_IO;
 with Ada.Strings.Unbounded;    use Ada.Strings.Unbounded;
 
 with Uml2code_Config;
 with UML.Model;
 with PlantUML;
-with Uml2Code_Model_Dump;
 
 package body Uml2Code_Commands is
 
@@ -58,9 +56,8 @@ package body Uml2Code_Commands is
       end if;
 
       case Fmt is
-         when Uml2Code_Formats.Text =>
-            Uml2Code_Model_Dump.Dump (Model);
-         when Uml2Code_Formats.Json
+         when Uml2Code_Formats.Text
+            | Uml2Code_Formats.Json
             | Uml2Code_Formats.Ada_HSM =>
             case Model.Kind is
                when UML.Model.State_Diagram =>

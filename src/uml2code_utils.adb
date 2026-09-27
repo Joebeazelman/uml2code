@@ -4,17 +4,19 @@ with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with Uml2Code_Template_Path;
 
+
 package body Uml2Code_Utils is
 
    function Render_Template
      (Subdir   : String;
       Template : String;
-      T        : Templates_Parser.Translate_Set) return String
+      T        : Jintp.Dictionary) return String
    is
       Path : constant String :=
         Uml2Code_Template_Path.Locate (Subdir, Template);
+      Env : Jintp.Environment;
    begin
-      return Templates_Parser.Parse (Path, T);
+      return Jintp.Render (Path, T, Env);
    end Render_Template;
 
    function Escape_Json (S : String) return String is

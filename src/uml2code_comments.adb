@@ -1,7 +1,7 @@
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with Jintp;                 use Jintp;
 
-package body Uml2Code_Ada_Comments is
+package body Uml2Code_Comments is
 
    function Comment_Lines
      (Text       : String;
@@ -87,4 +87,4 @@ package body Uml2Code_Ada_Comments is
       return Result;
    end Comment_Lines;
 
-end Uml2Code_Ada_Comments;
+end Uml2Code_Comments;

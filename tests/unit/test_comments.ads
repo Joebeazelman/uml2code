@@ -1,9 +1,10 @@
 with AUnit.Test_Cases;
 
-package HistoryTest_Tests is
+package Test_Comments is
+
    type Case_Type is new AUnit.Test_Cases.Test_Case with null record;
-   overriding
+
    procedure Register_Tests (T : in out Case_Type);
-   overriding
    function Name (T : Case_Type) return AUnit.Message_String;
-end HistoryTest_Tests;
+
+end Test_Comments;

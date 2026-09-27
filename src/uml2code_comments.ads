@@ -5,7 +5,7 @@
 
 with Jintp;
 
-package Uml2Code_Ada_Comments is
+package Uml2Code_Comments is
 
    --  Convert semantic comment text into Ada comment lines.  Existing line
    --  breaks are preserved and long lines wrap at word boundaries.  A word
@@ -14,4 +14,4 @@ package Uml2Code_Ada_Comments is
      (Text       : String;
       Wrap_Width : Positive := 78) return Jintp.List;
 
-end Uml2Code_Ada_Comments;
+end Uml2Code_Comments;

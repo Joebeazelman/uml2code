@@ -13,12 +13,14 @@ package body {{ PACKAGE_NAME }} is
    end Reset;
 
    --  Transition table: maps (State, Event) -> State
+   --  "Terminated" means transition to [*]_end (machine stops)
    type Transition_Table is array (State, Event) of State;
 
    No_State : constant State := {{ INITIAL_STATE | ident }};
+   Terminated : constant State := {{ INITIAL_STATE | ident }};  --  Pseudo-state marker
 
    Table : constant Transition_Table :=
-     ({% for state in states %}{{ state.id | ident }} => ({% for trans in state.trans_table %}{{ trans.event | ident }} => {{ trans.target | ident }}{% if not loop.last %}, {% endif %}{% endfor %}, others => No_State){% if not loop.last %},
+     ({% for state in states %}{{ state.id | ident }} => ({% for trans in state.trans_table %}{{ trans.event | ident }} => {% if trans.target == "Terminated" %}Terminated{% elif trans.target == "No_State" %}No_State{% else %}{{ trans.target | ident }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}, others => No_State){% if not loop.last %},
       {% endif %}{% endfor %});
 
    procedure Step (Self : in out Machine; Evt : Event) is
@@ -43,20 +45,23 @@ package body {{ PACKAGE_NAME }} is
 
       --  State transition
       if Next /= No_State then
+         --  Check if transitioning to terminal state
+         if Next = Terminated then
+            Base.Mark_Terminated (Self);
+            return;
+         end if;
+
 {% for composite in composite_states %}         --  Reset child machine on entry to composite state
          if Next = {{ composite.name | ident }} and then Self.Current /= {{ composite.name | ident }} then
             declare
                Via_History : constant Boolean := False;  --  TODO: implement history
             begin
-               case Via_History is
-                  when False =>
-                     {{ composite.child_package }}.Base.Reset (Self.{{ composite.child_field }});
-                  when True =>
-                     {{ composite.child_package }}.Reset_To_Current (Self.{{ composite.child_field }});
-               end case;
+               if not Via_History then
+                  {{ composite.child_package }}.Reset (Self.{{ composite.child_field }});
+               end if;
             end;
          end if;
-{%- endfor %}
+{% endfor %}
          Self.Current := Next;
 
          --  Entry actions
@@ -65,12 +70,7 @@ package body {{ PACKAGE_NAME }} is
                {{ action }};
 {% endfor %}{% endfor %}            when others => null;
          end case;
-
-         --  Terminal state marking
-{% for state in states %}{% if state.is_terminal %}         if Self.Current = {{ state.id | ident }} then
-            Base.Mark_Terminated (Self);
-         end if;
-{% endif %}{% endfor %}      end if;
+      end if;
    end Step;
 {% for composite in composite_states %}
 
@@ -83,6 +83,6 @@ package body {{ PACKAGE_NAME }} is
    begin
       {{ composite.child_package }}.Step (Self.{{ composite.child_field }}, Evt);
    end Step_{{ composite.name | ident }};
-{%- endfor %}
+{% endfor %}
 
 end {{ PACKAGE_NAME }};

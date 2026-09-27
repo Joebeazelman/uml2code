@@ -1,4 +1,6 @@
-with Templates_Parser;
+
+
+with Jintp;
 
 package Uml2Code_Utils is
 
@@ -12,7 +14,7 @@ package Uml2Code_Utils is
    function Render_Template
      (Subdir   : String;
       Template : String;
-      T        : Templates_Parser.Translate_Set) return String;
+      T        : Jintp.Dictionary) return String;
 
    --  Escape a string for inclusion inside a JSON string literal.
    --  Handles double quote, backslash, LF, CR, and HT. Other control

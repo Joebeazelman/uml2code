@@ -17,10 +17,9 @@ with Uml2Code_Ansi;
 with Uml2Code_CLI;               use Uml2Code_CLI;
 with Uml2Code_Commands;
 with Uml2Code_Formats;           use Uml2Code_Formats;
-with Uml2Code_Ada_Classes;
+with Uml2Code_Classes;
 with Uml2Code_Help;
 with Uml2Code_Template_Path;
-with Uml2Code_Template_Bindings;
 
 procedure Uml2Code is
 
@@ -186,8 +185,7 @@ begin
    end loop;
 
    --  Dispatch
-   Uml2Code_Template_Bindings.Register_Filters;
-
+   
    for F of Args.Files loop
       declare
          Path : constant String := To_String (F);
@@ -217,7 +215,7 @@ begin
                      & Args.Format'Image & "'");
                Hint ("use -t <dir> to point at a custom template "
                      & "directory");
-            when Uml2Code_Ada_Classes.Validation_Error =>
+            when Uml2Code_Classes.Validation_Error =>
                --  Validation errors already reported to stderr.
                Ok := False;
             when E : others =>

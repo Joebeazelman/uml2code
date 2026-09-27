@@ -1,21 +1,17 @@
---  Parser-agnostic tag bindings for template rendering.
---
---  Produces a Translate_Set from a UML.Model.Diagram for both text
---  and JSON output. The parser is not visible here.
-
-with Templates_Parser;
+with Jintp;
 with UML.Model;
 
 package Uml2Code_Template_Bindings is
 
+   function Id_Of (D : UML.Model.Diagram; Idx : UML.Model.Element_Index)
+                   return String;
+
    function For_States
      (D : UML.Model.Diagram)
-      return Templates_Parser.Translate_Set;
+      return Jintp.Dictionary;
 
    function For_Classes
      (D : UML.Model.Diagram)
-      return Templates_Parser.Translate_Set;
-
-   procedure Register_Filters;
+      return Jintp.Dictionary;
 
 end Uml2Code_Template_Bindings;

@@ -5,7 +5,7 @@
 
 with UML.Model;
 
-package Uml2Code_Ada is
+package Uml2Code_States is
 
    --  Emit <Package_Name>.ads and <Package_Name>.adb into Out_Dir.
    procedure Generate
@@ -24,4 +24,4 @@ package Uml2Code_Ada is
    --  Class diagrams set Include_State_Runtime to False; they still
    --  get a project skeleton and a driver, but no state-machine files.
 
-end Uml2Code_Ada;
+end Uml2Code_States;

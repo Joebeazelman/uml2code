@@ -8,7 +8,7 @@
 with UML.Model;
 with Jintp;
 
-package Uml2Code_Ada_Classes is
+package Uml2Code_Classes is
 
    procedure Generate
      (D              : UML.Model.Diagram;
@@ -26,4 +26,4 @@ package Uml2Code_Ada_Classes is
    --  the exception is raised; nothing is written to Out_Dir.
    Validation_Error : exception;
 
-end Uml2Code_Ada_Classes;
+end Uml2Code_Classes;

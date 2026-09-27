@@ -4,22 +4,23 @@
 --  dictionaries with raw values, and delegates all formatting
 --  (type mapping, identifier casing, keywords) to Jintp templates.
 
-with Ada.Characters.Handling;      use Ada.Characters.Handling;
+with Ada.Characters.Handling; use Ada.Characters.Handling;
 with Ada.Containers.Vectors;
 with Ada.Directories;
-with Ada.Strings.Unbounded;       use Ada.Strings.Unbounded;
+
+with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 
 with UML.Model;
-with UML.Model.Queries;            use UML.Model.Queries;
-with Uml2Code_Utils;               use Uml2Code_Utils;
+with UML.Model.Queries;          use UML.Model.Queries;
+with Uml2Code_Utils;             use Uml2Code_Utils;
 with Uml2Code_Filters;
-with Uml2Code_Generator_Support;   use Uml2Code_Generator_Support;
-with Uml2Code_Ada_Comments;
+with Uml2Code_Generator_Support; use Uml2Code_Generator_Support;
+with Uml2Code_Comments;
 with Uml2Code_Template_Path;
 
-with Jintp;                        use Jintp;
+with Jintp; use Jintp;
 
-package body Uml2Code_Ada_Classes is
+package body Uml2Code_Classes is
 
    use type UML.Model.Element_Kind;
    use type UML.Model.Relation_Kind;
@@ -27,8 +28,7 @@ package body Uml2Code_Ada_Classes is
    use type UML.Model.Element_Index_Vectors.Vector;
 
    function Id_Of
-     (D : UML.Model.Diagram; Idx : UML.Model.Element_Index) return String
-   is
+     (D : UML.Model.Diagram; Idx : UML.Model.Element_Index) return String is
    begin
       if Idx = 0 or else Positive (Idx) > Natural (D.Elements.Length) then
          return "";
@@ -37,9 +37,7 @@ package body Uml2Code_Ada_Classes is
    end Id_Of;
 
    procedure Generate
-     (D              : UML.Model.Diagram;
-      Source_Diagram : String;
-      Out_Dir        : String)
+     (D : UML.Model.Diagram; Source_Diagram : String; Out_Dir : String)
    is
       Env : Jintp.Environment;
    begin
@@ -59,42 +57,45 @@ package body Uml2Code_Ada_Classes is
          Indices  : UML.Model.Element_Index_Vectors.Vector;
          Out_Dir  : String)
       is
-         Dict          : Dictionary;
+         Dict           : Dictionary;
          Interface_List : List;
-         Enum_List     : List;
-         Class_List    : List;
+         Enum_List      : List;
+         Class_List     : List;
       begin
          --  Package-level context (raw values, no formatting)
          Insert (Dict, "PACKAGE_NAME", Pkg_Name);
          Insert (Dict, "GENERATION_DATE", Date_Str);
          Insert (Dict, "SOURCE_DIAGRAM", Source_Diagram);
          Insert (Dict, "TITLE_LINE", Title_Of (D));
-         Insert (Dict, "comment_lines",
-                 Uml2Code_Ada_Comments.Comment_Lines
-                   (Notes_Of (D), Uml2Code_Template_Path.Comment_Wrap));
+         Insert
+           (Dict,
+            "comment_lines",
+            Uml2Code_Comments.Comment_Lines
+              (Notes_Of (D), Uml2Code_Template_Path.Comment_Wrap));
 
          --  Build separate lists for each element kind
          for Idx of Indices loop
-            if Idx = 0 or else Positive (Idx) > Natural (D.Elements.Length) then
+            if Idx = 0 or else Positive (Idx) > Natural (D.Elements.Length)
+            then
                goto Continue_Element;
             end if;
 
             declare
-               Elem      : UML.Model.Element renames
+               Elem       : UML.Model.Element renames
                  D.Elements (Positive (Idx));
-               E_Dict    : Dictionary;
-               Attr_List : List;
-               Meth_List : List;
-               Rel_List  : List;
-               Lit_List  : List;
+               E_Dict     : Dictionary;
+               Attr_List  : List;
+               Meth_List  : List;
+               Rel_List   : List;
+               Lit_List   : List;
                Has_Fields : Boolean := False;
-               Name      : constant String := To_String (Elem.Id);
+               Name       : constant String := To_String (Elem.Id);
             begin
                --  Raw identifiers - templates apply filters
                Insert (E_Dict, "name", Name);
                Insert (E_Dict, "kind", Elem.Kind'Image);
-               Insert (E_Dict, "is_abstract",
-                       Elem.Kind = UML.Model.Abstract_Class);
+               Insert
+                 (E_Dict, "is_abstract", Elem.Kind = UML.Model.Abstract_Class);
 
                declare
                   Comments : Unbounded_String;
@@ -105,10 +106,12 @@ package body Uml2Code_Ada_Classes is
                      end if;
                      Append (Comments, Note.Text);
                   end loop;
-                  Insert (E_Dict, "comment_lines",
-                          Uml2Code_Ada_Comments.Comment_Lines
-                            (To_String (Comments),
-                             Uml2Code_Template_Path.Comment_Wrap));
+                  Insert
+                    (E_Dict,
+                     "comment_lines",
+                     Uml2Code_Comments.Comment_Lines
+                       (To_String (Comments),
+                        Uml2Code_Template_Path.Comment_Wrap));
                end;
 
                --  Find parent via inheritance (raw name)
@@ -139,19 +142,16 @@ package body Uml2Code_Ada_Classes is
                      then
                         Append (Iface_List, Id_Of (D, R.From));
                         if not Has_Iface then
-                           First_Iface := To_Unbounded_String
-                             (Id_Of (D, R.From));
+                           First_Iface :=
+                             To_Unbounded_String (Id_Of (D, R.From));
                            Has_Iface := True;
                         end if;
                      end if;
                   end loop;
                   Insert (E_Dict, "interfaces", Iface_List);
                   Insert (E_Dict, "has_interface", Has_Iface);
-                  Insert (E_Dict, "first_interface",
-                          To_String (First_Iface));
+                  Insert (E_Dict, "first_interface", To_String (First_Iface));
                end;
-
-
 
                --  Enum literals (raw names)
                if Elem.Kind = UML.Model.Enumeration then
@@ -185,9 +185,13 @@ package body Uml2Code_Ada_Classes is
                   --  First, add direct attributes
                   for M of Elem.Members loop
                      if M.Kind = UML.Model.Attribute then
-                        Append (Field_Lines,
-                                "Attr_" & To_String (M.Id) & " : " &
-                                To_String (M.Type_Name) & ";");
+                        Append
+                          (Field_Lines,
+                           "Attr_"
+                           & To_String (M.Id)
+                           & " : "
+                           & To_String (M.Type_Name)
+                           & ";");
                         Has_Fields := True;
                      end if;
                   end loop;
@@ -200,10 +204,10 @@ package body Uml2Code_Ada_Classes is
                        and then Id_Of (D, R.From) = Name
                      then
                         declare
-                           Target : constant String := Id_Of (D, R.To);
+                           Target         : constant String := Id_Of (D, R.To);
                            Target_Is_Enum : Boolean := False;
-                           Line : Unbounded_String;
-                           R_Dict : Dictionary;
+                           Line           : Unbounded_String;
+                           R_Dict         : Dictionary;
                         begin
                            --  Check if target is an enum (only once per relation)
                            for E of D.Elements loop
@@ -217,15 +221,25 @@ package body Uml2Code_Ada_Classes is
 
                            --  Build field line
                            if R.Kind = UML.Model.Composition then
-                              Line := To_Unbounded_String
-                                ("Attr_" & Target & " : " & Target &
-                                 "_Vectors.Vector;");
+                              Line :=
+                                To_Unbounded_String
+                                  ("Attr_"
+                                   & Target
+                                   & " : "
+                                   & Target
+                                   & "_Vectors.Vector;");
                            elsif Target_Is_Enum then
-                              Line := To_Unbounded_String
-                                ("Attr_" & Target & " : " & Target & ";");
+                              Line :=
+                                To_Unbounded_String
+                                  ("Attr_" & Target & " : " & Target & ";");
                            else
-                              Line := To_Unbounded_String
-                                ("Attr_" & Target & " : access " & Target & ";");
+                              Line :=
+                                To_Unbounded_String
+                                  ("Attr_"
+                                   & Target
+                                   & " : access "
+                                   & Target
+                                   & ";");
                            end if;
                            Append (Field_Lines, To_String (Line));
                            Has_Fields := True;
@@ -233,8 +247,10 @@ package body Uml2Code_Ada_Classes is
                            --  Build relation dictionary for template
                            Insert (R_Dict, "target", Target);
                            Insert (R_Dict, "kind", R.Kind'Image);
-                           Insert (R_Dict, "is_composition",
-                                   R.Kind = UML.Model.Composition);
+                           Insert
+                             (R_Dict,
+                              "is_composition",
+                              R.Kind = UML.Model.Composition);
                            Insert (R_Dict, "is_enum_target", Target_Is_Enum);
                            Append (Rel_List, R_Dict);
                         end;
@@ -250,7 +266,7 @@ package body Uml2Code_Ada_Classes is
                for M of Elem.Members loop
                   if M.Kind = UML.Model.Method then
                      declare
-                        M_Dict : Dictionary;
+                        M_Dict   : Dictionary;
                         Ret_Type : constant String := To_String (M.Type_Name);
                      begin
                         Insert (M_Dict, "name", To_String (M.Id));
@@ -258,8 +274,10 @@ package body Uml2Code_Ada_Classes is
                         Insert (M_Dict, "params", To_String (M.Params));
                         Insert (M_Dict, "is_abstract", M.Is_Abstract);
                         Insert (M_Dict, "is_static", M.Is_Static);
-                        Insert (M_Dict, "has_return_type",
-                                Ret_Type /= "" and then Ret_Type /= "void");
+                        Insert
+                          (M_Dict,
+                           "has_return_type",
+                           Ret_Type /= "" and then Ret_Type /= "void");
                         Append (Meth_List, M_Dict);
                      end;
                   end if;
@@ -285,7 +303,7 @@ package body Uml2Code_Ada_Classes is
 
          --  Collect vector instantiations for composition relations
          declare
-            Vector_List : List;
+            Vector_List               : List;
             Has_Vector_Instantiations : Boolean := False;
          begin
             for Idx of Indices loop
@@ -293,7 +311,7 @@ package body Uml2Code_Ada_Classes is
                  and then Positive (Idx) <= Natural (D.Elements.Length)
                then
                   declare
-                     Elem : UML.Model.Element renames
+                     Elem  : UML.Model.Element renames
                        D.Elements (Positive (Idx));
                      EName : constant String := To_String (Elem.Id);
                   begin
@@ -303,12 +321,11 @@ package body Uml2Code_Ada_Classes is
                         then
                            declare
                               V_Dict : Dictionary;
-                              Target : constant String :=
-                                Id_Of (D, R.To);
+                              Target : constant String := Id_Of (D, R.To);
                            begin
                               Insert (V_Dict, "element_type", Target);
-                              Insert (V_Dict, "vector_name",
-                                      Target & "_Vectors");
+                              Insert
+                                (V_Dict, "vector_name", Target & "_Vectors");
                               Append (Vector_List, V_Dict);
                               Has_Vector_Instantiations := True;
                            end;
@@ -318,8 +335,8 @@ package body Uml2Code_Ada_Classes is
                end if;
             end loop;
             Insert (Dict, "vector_instantiations", Vector_List);
-            Insert (Dict, "has_vector_instantiations",
-                    Has_Vector_Instantiations);
+            Insert
+              (Dict, "has_vector_instantiations", Has_Vector_Instantiations);
          end;
 
          --  Track if we need Unbounded_String
@@ -360,14 +377,18 @@ package body Uml2Code_Ada_Classes is
 
          --  Render templates
          Render_To_Dict
-           ("ada/class", "class.ads.tmplt",
+           ("ada/class",
+            "class.ads.tmplt",
             Ada.Directories.Compose (Out_Dir, Pkg_Name & ".ads"),
-            Dict, Env);
+            Dict,
+            Env);
 
          Render_To_Dict
-           ("ada/class", "class.adb.tmplt",
+           ("ada/class",
+            "class.adb.tmplt",
             Ada.Directories.Compose (Out_Dir, Pkg_Name & ".adb"),
-            Dict, Env);
+            Dict,
+            Env);
 
       end Emit_Package;
 
@@ -375,8 +396,7 @@ package body Uml2Code_Ada_Classes is
       Uml2Code_Filters.Register_Filters (Env);
       Refuse_Crate_Internal_Output (Out_Dir);
       declare
-         Src_Dir : constant String :=
-           Ada.Directories.Compose (Out_Dir, "src");
+         Src_Dir : constant String := Ada.Directories.Compose (Out_Dir, "src");
       begin
          Ada.Directories.Create_Path (Src_Dir);
 
@@ -387,8 +407,8 @@ package body Uml2Code_Ada_Classes is
                Indices : UML.Model.Element_Index_Vectors.Vector;
             end record;
 
-            package Pkg_Vectors is new Ada.Containers.Vectors
-              (Positive, Pkg_Info);
+            package Pkg_Vectors is new
+              Ada.Containers.Vectors (Positive, Pkg_Info);
 
             Packages : Pkg_Vectors.Vector;
          begin
@@ -396,7 +416,8 @@ package body Uml2Code_Ada_Classes is
                declare
                   Elem     : UML.Model.Element renames D.Elements (I);
                   Pkg_Name : constant String :=
-                    (if Elem.Parent = 0 then "Model"
+                    (if Elem.Parent = 0
+                     then "Model"
                      else Id_Of (D, Elem.Parent));
                   Found    : Boolean := False;
                begin
@@ -429,12 +450,13 @@ package body Uml2Code_Ada_Classes is
             end loop;
 
             for P in Packages.First_Index .. Packages.Last_Index loop
-               Emit_Package (To_String (Packages (P).Name),
-                             Packages (P).Indices,
-                             Src_Dir);
+               Emit_Package
+                 (To_String (Packages (P).Name),
+                  Packages (P).Indices,
+                  Src_Dir);
             end loop;
          end;
       end;
    end Generate;
 
-end Uml2Code_Ada_Classes;
+end Uml2Code_Classes;
