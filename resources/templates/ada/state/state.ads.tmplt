@@ -12,16 +12,17 @@
 {% for composite in composite_states %}
 with {{ composite.child_package }};
 {%- endfor %}
+with State_Machine;
 
 package {{ PACKAGE_NAME }} is
 
    type State is
-     ({% for state in states %}{{ state.id | ident }}{% if not loop.last %}, {% endif %}{% endfor %});
+       ({% for state in states %}{{ state.separator }}{{ state.id | ident }}{% endfor %});
 
    type Event is
-     ({% for event in events %}{{ event.name | ident }}{% if not loop.last %}, {% endif %}{% endfor %});
+       ({% for event in events %}{{ event.separator }}{{ event.name | ident }}{% endfor %});
 
-   type Machine is new Base.Machine with record
+   type Machine is new State_Machine.Machine with record
       Current : State := {{ INITIAL_STATE | ident }};
 {% for composite in composite_states %}      {{ composite.child_field }} : {{ composite.child_package }}.Machine;
 {%- endfor %}

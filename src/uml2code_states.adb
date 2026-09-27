@@ -21,6 +21,17 @@ package body Uml2Code_States is
 
    Top_Level : constant Natural := 0;
 
+   function Is_Concrete_State
+     (D : UML.Model.Diagram; Index : UML.Model.Element_Index)
+      return Boolean
+   is
+   begin
+      return Index /= 0
+        and then Positive (Index) <= Natural (D.Elements.Length)
+        and then D.Elements (Positive (Index)).Kind in
+          Simple_State | Composite_State | Submachine_Reference;
+   end Is_Concrete_State;
+
 
    function Collect_Events
      (D      : UML.Model.Diagram;
@@ -69,24 +80,23 @@ package body Uml2Code_States is
                Target : constant String := Id_Of (D, T.To);
             begin
                if Target /= "" then
-                  return Target;
+                  for I of States loop
+                     if Is_Concrete_State (D, I)
+                       and then Id_Of (D, I) = Target
+                     then
+                        return Target;
+                     end if;
+                  end loop;
                end if;
             end;
          end if;
       end loop;
       for I of States loop
-         if I /= 0 and then Positive (I) <= Natural (D.Elements.Length) then
-            declare
-               Raw : constant String :=
-                 To_String (D.Elements (Positive (I)).Id);
-            begin
-               if Raw not in "[*]_start" | "[*]_end" | "[H]" | "[H*]" then
-                  return Raw;
-               end if;
-            end;
+         if Is_Concrete_State (D, I) then
+            return Id_Of (D, I);
          end if;
       end loop;
-      --  Fallback: return first non-pseudostate or empty
+      --  Fallback: return the first concrete state or empty.
       return "Idle";
    end Initial_State_Of;
 
@@ -164,17 +174,23 @@ package body Uml2Code_States is
         States_In (D, Region);
       Ts           : constant UML.Model.Relation_Vectors.Vector :=
         Transitions_In (Cache, D, Region);
-      Child_States : constant UML.Model.Element_Index_Vectors.Vector :=
-        Composite_Children_Of (D, States);
 
       Dict             : Dictionary;
       State_List       : List;
       Trans_List       : List;
       Composite_States : List;
+      Action_Hook_List : List;
+      Action_Hooks     : String_Sets.Set;
 
       Events     : constant String_Sets.Set := Collect_Events (D, Ts, States);
       Event_List : List;
       Initial    : constant String := Initial_State_Of (D, Region, States);
+      State_Number : Natural := 0;
+      Event_Number : Natural := 0;
+      Entry_State_Count : Natural := 0;
+      Exit_State_Count : Natural := 0;
+      Do_State_Count : Natural := 0;
+      Internal_State_Count : Natural := 0;
 
       Ads_File : constant String :=
         Ada.Directories.Compose (Out_Dir, Package_Name & ".ads");
@@ -182,21 +198,29 @@ package body Uml2Code_States is
         Ada.Directories.Compose (Out_Dir, Package_Name & ".adb");
    begin
       --  Build state list for JinTP {% for %} iteration.
-      --  Skip pseudostates ([*]_start, [*]_end, [H], [H*]) - they are
-      --  internal implementation details, not user-visible states.
+      --  Pseudostates are excluded by their UML element kind below.
       for I of States loop
          if I /= 0 and then Positive (I) <= Natural (D.Elements.Length) then
             declare
                Elem   : UML.Model.Element renames D.Elements (Positive (I));
                Raw_Id : constant String := To_String (Elem.Id);
             begin
-               --  Skip pseudostates
-               if Raw_Id not in "[*]_start" | "[*]_end" | "[H]" | "[H*]" then
+               --  Only concrete states can appear as generated enum values.
+               if Elem.Kind in Simple_State | Composite_State | Submachine_Reference then
                   declare
                      State_Dict : Dictionary;
                   begin
+                               State_Number := State_Number + 1;
                      Insert (State_Dict, "id", Raw_Id);
                      Insert (State_Dict, "kind", Elem.Kind'Image);
+                     Insert
+                       (State_Dict,
+                        "separator",
+                        (if State_Number = 1 then "" else ", "));
+                               Insert
+                                  (State_Dict,
+                                    "table_separator",
+                                    (if State_Number = 1 then "" else "," & ASCII.LF & "      "));
 
                      --  Detect terminal states (states that transition to [*])
                      declare
@@ -225,20 +249,30 @@ package body Uml2Code_States is
                         Exit_List        : List;
                         Do_List          : List;
                         Annotations_List : List;
+                        Has_Entry_Actions : Boolean := False;
+                        Has_Exit_Actions : Boolean := False;
+                        Has_Do_Actions : Boolean := False;
+                        Has_Internal_Transitions : Boolean := False;
                      begin
                         for A of Elem.Annotations loop
                            if A.Kind = Entry_Action
                              and then Length (A.Text) > 0
                            then
                               Append (Entry_List, To_String (A.Text));
+                              Action_Hooks.Include (To_String (A.Text));
+                              Has_Entry_Actions := True;
                            elsif A.Kind = Exit_Action
                              and then Length (A.Text) > 0
                            then
                               Append (Exit_List, To_String (A.Text));
+                              Action_Hooks.Include (To_String (A.Text));
+                              Has_Exit_Actions := True;
                            elsif A.Kind = Do_Activity
                              and then Length (A.Text) > 0
                            then
                               Append (Do_List, To_String (A.Text));
+                              Action_Hooks.Include (To_String (A.Text));
+                              Has_Do_Actions := True;
                            elsif A.Kind = Internal_Transition then
                               declare
                                  Ann_Dict : Dictionary;
@@ -252,13 +286,39 @@ package body Uml2Code_States is
                                  Insert
                                    (Ann_Dict, "action", To_String (A.Text));
                                  Append (Annotations_List, Ann_Dict);
+                                 Has_Internal_Transitions := True;
+                                 if Length (A.Text) > 0 then
+                                    Action_Hooks.Include
+                                      (To_String (A.Text));
+                                 end if;
                               end;
                            end if;
                         end loop;
+                        if Has_Entry_Actions then
+                           Entry_State_Count := Entry_State_Count + 1;
+                        end if;
+                        if Has_Exit_Actions then
+                           Exit_State_Count := Exit_State_Count + 1;
+                        end if;
+                        if Has_Do_Actions then
+                           Do_State_Count := Do_State_Count + 1;
+                        end if;
+                        if Has_Internal_Transitions then
+                           Internal_State_Count := Internal_State_Count + 1;
+                        end if;
                         Insert (State_Dict, "entry_actions", Entry_List);
                         Insert (State_Dict, "exit_actions", Exit_List);
                         Insert (State_Dict, "do_actions", Do_List);
                         Insert (State_Dict, "annotations", Annotations_List);
+                        Insert
+                          (State_Dict, "has_entry_actions", Has_Entry_Actions);
+                        Insert
+                          (State_Dict, "has_exit_actions", Has_Exit_Actions);
+                        Insert (State_Dict, "has_do_actions", Has_Do_Actions);
+                        Insert
+                          (State_Dict,
+                           "has_internal_transitions",
+                           Has_Internal_Transitions);
                      end;
 
                      --  Collect transitions FROM this state
@@ -297,11 +357,17 @@ package body Uml2Code_States is
                      --  Transitions to [*]_end are marked with target="Terminated"
                      declare
                         Trans_Table : List;
+                        Table_Row   : Unbounded_String;
+                        First_Entry : Boolean := True;
                      begin
                         for E of Events loop
                            declare
                               Trans_Entry : Dictionary;
+                              Target_Name : Unbounded_String :=
+                                To_Unbounded_String (Initial);
                               Found       : Boolean := False;
+                              Has_Transition : Boolean := False;
+                              Is_Terminal : Boolean := False;
                            begin
                               --  Find transition for this state and event
                               for R of Ts loop
@@ -310,11 +376,28 @@ package body Uml2Code_States is
                                    and then Id_Of (D, R.To) /= ""
                                  then
                                     Insert (Trans_Entry, "event", E);
-                                    --  Check if this transition goes to [*]_end
-                                    if Id_Of (D, R.To) = "[*]_end" then
+                                    --  Mark terminal targets before converting to a state ID.
+                                    if R.To /= 0
+                                      and then Positive (R.To) <=
+                                        Natural (D.Elements.Length)
+                                      and then D.Elements
+                                        (Positive (R.To)).Kind = End_Pseudostate
+                                    then
                                        Insert (Trans_Entry, "target", "Terminated");
+                                                          Has_Transition := True;
+                                                          Is_Terminal := True;
+                                    elsif Is_Concrete_State (D, R.To) then
+                                       Target_Name :=
+                                         To_Unbounded_String
+                                           (Id_Of (D, R.To));
+                                                          Has_Transition := True;
+                                       Insert
+                                         (Trans_Entry,
+                                          "target",
+                                          To_String (Target_Name));
                                     else
-                                       Insert (Trans_Entry, "target", Id_Of (D, R.To));
+                                       Insert
+                                         (Trans_Entry, "target", "No_State");
                                     end if;
                                     Found := True;
                                     exit;
@@ -327,10 +410,28 @@ package body Uml2Code_States is
                               end if;
 
                               Append (Trans_Table, Trans_Entry);
+                              if not First_Entry then
+                                 Append (Table_Row, ", ");
+                              end if;
+                              Append
+                                (Table_Row,
+                                 Uml2Code_Identifiers.Ident (E)
+                                                 & " => (Has_Transition => "
+                                                 & (if Has_Transition then "True" else "False")
+                                                 & ", Target => "
+                                 & Uml2Code_Identifiers.Ident
+                                     (To_String (Target_Name)));
+                                             Append
+                                                (Table_Row,
+                                                 ", Is_Terminal => "
+                                                 & (if Is_Terminal then "True" else "False")
+                                                 & ")");
+                              First_Entry := False;
                            end;
                         end loop;
 
                         Insert (State_Dict, "trans_table", Trans_Table);
+                        Insert (State_Dict, "table_row", To_String (Table_Row));
                      end;
 
                      --  Detect composite states (states with children)
@@ -403,7 +504,12 @@ package body Uml2Code_States is
          declare
             Event_Dict : Dictionary;
          begin
+            Event_Number := Event_Number + 1;
             Insert (Event_Dict, "name", E);
+            Insert
+              (Event_Dict,
+               "separator",
+               (if Event_Number = 1 then "" else ", "));
             Append (Event_List, Event_Dict);
          end;
       end loop;
@@ -412,22 +518,45 @@ package body Uml2Code_States is
       Insert (Dict, "states", State_List);
       Insert (Dict, "composite_states", Composite_States);
       Insert (Dict, "transitions", Trans_List);
+      Insert (Dict, "has_multiple_states", State_Number > 1);
+         Insert
+            (Dict, "has_entry_action_others", Entry_State_Count < State_Number);
+         Insert
+            (Dict, "has_exit_action_others", Exit_State_Count < State_Number);
+         Insert (Dict, "has_do_action_others", Do_State_Count < State_Number);
+         Insert
+            (Dict,
+             "has_internal_transition_others",
+             Internal_State_Count < State_Number);
+      for Hook of Action_Hooks loop
+         declare
+            Hook_Dict : Dictionary;
+         begin
+            Insert (Hook_Dict, "name", Hook);
+            Append (Action_Hook_List, Hook_Dict);
+         end;
+      end loop;
+      Insert (Dict, "action_hooks", Action_Hook_List);
 
       Render_To_Dict
         ("ada/state", "state.ads.tmplt", Ads_File, Dict, Global_Env);
       Render_To_Dict
         ("ada/state", "state.adb.tmplt", Adb_File, Dict, Global_Env);
 
-      for C of Child_States loop
-         Generate_Region
-           (D              => D,
-            Cache          => Cache,
-            Region         => Natural (C),
-            Package_Name   =>
-              Uml2Code_Identifiers.Ident (Id_Of (D, C)) & "_Machine",
-            Source_Diagram => Source_Diagram,
-            Date_Str       => Date_Str,
-            Out_Dir        => Out_Dir);
+      for C of States loop
+         --  Only a composite state owns a nested region. Its leaf children
+         --  remain ordinary states in this state's child machine.
+         if Is_Composite (D, C) then
+                  Generate_Region
+                     (D              => D,
+                      Cache          => Cache,
+                      Region         => Natural (C),
+                      Package_Name   =>
+                         Uml2Code_Identifiers.Ident (Id_Of (D, C)) & "_Machine",
+                      Source_Diagram => Source_Diagram,
+                      Date_Str       => Date_Str,
+                      Out_Dir        => Out_Dir);
+             end if;
       end loop;
    end Generate_Region;
 

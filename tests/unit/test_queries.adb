@@ -12,6 +12,9 @@ package body Test_Queries is
    function Make_Empty_Diagram return UML.Model.Diagram is
    begin
       return UML.Model.Diagram'(
+         Id         => Null_Unbounded_String,
+         Kind       => UML.Model.Unknown,
+         Roots      => UML.Model.Element_Index_Vectors.Empty_Vector,
          Elements   => UML.Model.Element_Vectors.Empty_Vector,
          Relations  => UML.Model.Relation_Vectors.Empty_Vector,
          Metadata   => UML.Model.Metadata_Vectors.Empty_Vector,
@@ -77,11 +80,11 @@ package body Test_Queries is
    procedure Test_Title_Of_With_Title (T : in out Test_Case'Class) is
       pragma Unreferenced (T);
       D : UML.Model.Diagram := Make_Empty_Diagram;
-      M : UML.Model.Metadata_Entry;
+      M : UML.Model.Metadata;
    begin
       M.Kind := UML.Model.Title;
       M.Text := To_Unbounded_String ("My Diagram");
-      D.Metadata.Append (M);
+      UML.Model.Metadata_Vectors.Append (D.Metadata, M);
 
       Assert (UML.Model.Queries.Title_Of (D) = "My Diagram",
               "returns title text");

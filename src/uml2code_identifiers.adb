@@ -26,5 +26,18 @@ package body Uml2Code_Identifiers is
       return R;
    end Ada_Case;
 
-   function Ident (S : String; Digit_Prefix : String := "S_") return String is (Ada_Case (Sanitize (S, Digit_Prefix)));
+   function Ident (S : String; Digit_Prefix : String := "S_") return String is
+      Cleaned : constant String := Sanitize (S, Digit_Prefix);
+      Result  : String := Ada_Case (Cleaned);
+   begin
+      if S'Length > 0 and then S (S'First) in '0' .. '9' then
+         for I in Result'First + Digit_Prefix'Length .. Result'Last loop
+            if Result (I) in 'a' .. 'z' then
+               Result (I) := To_Upper (Result (I));
+               exit;
+            end if;
+         end loop;
+      end if;
+      return Result;
+   end Ident;
 end Uml2Code_Identifiers;

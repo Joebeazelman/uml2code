@@ -1,4 +1,7 @@
 package body {{ PACKAGE_NAME }} is
+{% for action_hook in action_hooks %}
+   procedure {{ action_hook.name }} is null;
+{% endfor %}
 
    function Current_State (Self : Machine) return State is
    begin
@@ -12,47 +15,74 @@ package body {{ PACKAGE_NAME }} is
 {%- endfor %}
    end Reset;
 
-   --  Transition table: maps (State, Event) -> State
-   --  "Terminated" means transition to [*]_end (machine stops)
-   type Transition_Table is array (State, Event) of State;
+   type Transition_Result is record
+      Has_Transition : Boolean;
+      Target         : State;
+      Is_Terminal    : Boolean;
+   end record;
 
-   No_State : constant State := {{ INITIAL_STATE | ident }};
-   Terminated : constant State := {{ INITIAL_STATE | ident }};  --  Pseudo-state marker
+   type Transition_Table is array (State, Event) of Transition_Result;
 
    Table : constant Transition_Table :=
-     ({% for state in states %}{{ state.id | ident }} => ({% for trans in state.trans_table %}{{ trans.event | ident }} => {% if trans.target == "Terminated" %}Terminated{% elif trans.target == "No_State" %}No_State{% else %}{{ trans.target | ident }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}, others => No_State){% if not loop.last %},
-      {% endif %}{% endfor %});
+       [{% for state in states %}{{ state.table_separator }}{{ state.id | ident }} => [{{ state.table_row }}]{% endfor %}];
 
    procedure Step (Self : in out Machine; Evt : Event) is
-      Next : constant State := Table (Self.Current, Evt);
+      Current_Transition : constant Transition_Result :=
+        Table (Self.Current, Evt);
    begin
       --  Exit actions
       case Self.Current is
-{% for state in states %}{% for action in state.exit_actions %}         when {{ state.id | ident }} =>
+   {% for state in states %}{% if state.has_exit_actions %}         when {{ state.id | ident }} =>
+   {% for action in state.exit_actions %}
             {{ action }};
-{% endfor %}{% endfor %}         when others => null;
+   {% endfor %}{% endif %}{% endfor %}{% if has_exit_action_others %}         when others => null;
+   {% endif %}
       end case;
 
       --  Internal transitions (checked before state change)
       case Self.Current is
-{% for state in states %}{% for ann in state.annotations %}{% if ann.kind == "Internal_Transition" %}         when {{ state.id | ident }} =>
+   {% for state in states %}{% if state.has_internal_transitions %}         when {{ state.id | ident }} =>
+   {% for ann in state.annotations %}{% if ann.kind == "Internal_Transition" %}
             if Evt = {{ ann.trigger | ident }} then
                {{ ann.action }};
                return;
             end if;
-{% endif %}{% endfor %}{% endfor %}         when others => null;
+   {% endif %}{% endfor %}{% endif %}{% endfor %}{% if has_internal_transition_others %}         when others => null;
+   {% endif %}
       end case;
 
+   --  Do activities run while their state remains active.
+   case Self.Current is
+   {% for state in states %}{% if state.has_do_actions %}         when {{ state.id | ident }} =>
+   {% for action in state.do_actions %}
+      {{ action }};
+   {% endfor %}{% endif %}{% endfor %}{% if has_do_action_others %}         when others => null;
+   {% endif %}
+   end case;
+
       --  State transition
-      if Next /= No_State then
+   if Current_Transition.Has_Transition then
          --  Check if transitioning to terminal state
-         if Next = Terminated then
-            Base.Mark_Terminated (Self);
+      if Current_Transition.Is_Terminal then
+            State_Machine.Mark_Terminated (Self);
             return;
          end if;
 
+{% if has_multiple_states %}
 {% for composite in composite_states %}         --  Reset child machine on entry to composite state
-         if Next = {{ composite.name | ident }} and then Self.Current /= {{ composite.name | ident }} then
+         declare
+            function Is_Entering
+              (Current, Target, Candidate : State) return Boolean
+            is
+            begin
+               return Target = Candidate and then Current /= Candidate;
+            end Is_Entering;
+         begin
+            if Is_Entering
+              (Self.Current,
+               Current_Transition.Target,
+               {{ composite.name | ident }})
+            then
             declare
                Via_History : constant Boolean := False;  --  TODO: implement history
             begin
@@ -61,14 +91,18 @@ package body {{ PACKAGE_NAME }} is
                end if;
             end;
          end if;
+         end;
 {% endfor %}
-         Self.Current := Next;
+{% endif %}
+         Self.Current := Current_Transition.Target;
 
          --  Entry actions
          case Self.Current is
-{% for state in states %}{% for action in state.entry_actions %}            when {{ state.id | ident }} =>
+{% for state in states %}{% if state.has_entry_actions %}            when {{ state.id | ident }} =>
+{% for action in state.entry_actions %}
                {{ action }};
-{% endfor %}{% endfor %}            when others => null;
+{% endfor %}{% endif %}{% endfor %}{% if has_entry_action_others %}            when others => null;
+{% endif %}
          end case;
       end if;
    end Step;

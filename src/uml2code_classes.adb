@@ -6,6 +6,7 @@
 
 with Ada.Characters.Handling; use Ada.Characters.Handling;
 with Ada.Containers.Vectors;
+with Ada.Containers.Indefinite_Ordered_Sets;
 with Ada.Directories;
 
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
@@ -21,6 +22,9 @@ with Uml2Code_Template_Path;
 with Jintp; use Jintp;
 
 package body Uml2Code_Classes is
+
+    package Package_Name_Sets is new
+       Ada.Containers.Indefinite_Ordered_Sets (String);
 
    use type UML.Model.Element_Kind;
    use type UML.Model.Relation_Kind;
@@ -61,9 +65,90 @@ package body Uml2Code_Classes is
          Interface_List : List;
          Enum_List      : List;
          Class_List     : List;
+         Body_Function_List : List;
+         Body_Procedure_List : List;
+         Use_Packages   : Package_Name_Sets.Set;
+         Use_Package_List : List;
+
+         function Element_Package
+           (Index : UML.Model.Element_Index) return String
+         is
+         begin
+            if Index = 0
+              or else Positive (Index) > Natural (D.Elements.Length)
+            then
+               return "";
+            elsif D.Elements (Positive (Index)).Parent = 0 then
+               return "Model";
+            else
+               return Id_Of (D, D.Elements (Positive (Index)).Parent);
+            end if;
+         end Element_Package;
+
+         procedure Include_Package_For
+           (Index : UML.Model.Element_Index)
+         is
+            Pkg : constant String := Element_Package (Index);
+         begin
+            if Pkg'Length > 0 and then Pkg /= Pkg_Name then
+               Use_Packages.Include (Pkg);
+            end if;
+         end Include_Package_For;
+
+         procedure Include_Package_For_Type (Type_Name : String) is
+         begin
+            for I in 1 .. Natural (D.Elements.Length) loop
+               if To_String (D.Elements (I).Id) = Type_Name then
+                  Include_Package_For (UML.Model.Element_Index (I));
+                  return;
+               end if;
+            end loop;
+         end Include_Package_For_Type;
       begin
+         for Idx of Indices loop
+            if Idx /= 0
+              and then Positive (Idx) <= Natural (D.Elements.Length)
+            then
+               declare
+                  Elem : UML.Model.Element renames
+                    D.Elements (Positive (Idx));
+               begin
+                  for M of Elem.Members loop
+                     if M.Kind in UML.Model.Attribute | UML.Model.Method then
+                        Include_Package_For_Type
+                          (To_String (M.Type_Name));
+                     end if;
+                  end loop;
+                  for R of D.Relations loop
+                     if R.From = Idx
+                       and then R.Kind in
+                         UML.Model.Composition
+                         | UML.Model.Association
+                         | UML.Model.Aggregation
+                     then
+                        Include_Package_For (R.To);
+                     elsif R.To = Idx
+                       and then R.Kind in
+                         UML.Model.Inheritance | UML.Model.Realization
+                     then
+                        Include_Package_For (R.From);
+                     end if;
+                  end loop;
+               end;
+            end if;
+         end loop;
+         for Pkg of Use_Packages loop
+            declare
+               Package_Dict : Dictionary;
+            begin
+               Insert (Package_Dict, "name", Pkg);
+               Append (Use_Package_List, Package_Dict);
+            end;
+         end loop;
+
          --  Package-level context (raw values, no formatting)
          Insert (Dict, "PACKAGE_NAME", Pkg_Name);
+         Insert (Dict, "use_packages", Use_Package_List);
          Insert (Dict, "GENERATION_DATE", Date_Str);
          Insert (Dict, "SOURCE_DIAGRAM", Source_Diagram);
          Insert (Dict, "TITLE_LINE", Title_Of (D));
@@ -155,11 +240,25 @@ package body Uml2Code_Classes is
 
                --  Enum literals (raw names)
                if Elem.Kind = UML.Model.Enumeration then
+                  declare
+                     First_Literal : Boolean := True;
+                  begin
                   for M of Elem.Members loop
                      if M.Kind = UML.Model.Enum_Literal then
-                        Append (Lit_List, To_String (M.Id));
+                        declare
+                           Lit_Dict : Dictionary;
+                        begin
+                           Insert (Lit_Dict, "name", To_String (M.Id));
+                           Insert
+                             (Lit_Dict,
+                              "separator",
+                              (if First_Literal then "" else ", "));
+                           Append (Lit_List, Lit_Dict);
+                           First_Literal := False;
+                        end;
                      end if;
                   end loop;
+                  end;
                end if;
                Insert (E_Dict, "literals", Lit_List);
 
@@ -185,13 +284,23 @@ package body Uml2Code_Classes is
                   --  First, add direct attributes
                   for M of Elem.Members loop
                      if M.Kind = UML.Model.Attribute then
+                        declare
+                           Raw_Type : constant String :=
+                             To_String (M.Type_Name);
+                           Ada_Type : constant String :=
+                             (if To_Lower (Raw_Type) = "string"
+                                or else To_Lower (Raw_Type) = "str"
+                              then "Unbounded_String"
+                              else Raw_Type);
+                        begin
                         Append
                           (Field_Lines,
                            "Attr_"
                            & To_String (M.Id)
                            & " : "
-                           & To_String (M.Type_Name)
+                           & Ada_Type
                            & ";");
+                        end;
                         Has_Fields := True;
                      end if;
                   end loop;
@@ -270,6 +379,7 @@ package body Uml2Code_Classes is
                         Ret_Type : constant String := To_String (M.Type_Name);
                      begin
                         Insert (M_Dict, "name", To_String (M.Id));
+                        Insert (M_Dict, "class_name", Name);
                         Insert (M_Dict, "return_type", Ret_Type);
                         Insert (M_Dict, "params", To_String (M.Params));
                         Insert (M_Dict, "is_abstract", M.Is_Abstract);
@@ -279,6 +389,13 @@ package body Uml2Code_Classes is
                            "has_return_type",
                            Ret_Type /= "" and then Ret_Type /= "void");
                         Append (Meth_List, M_Dict);
+                        if not M.Is_Abstract then
+                           if Ret_Type /= "" and then Ret_Type /= "void" then
+                              Append (Body_Function_List, M_Dict);
+                           else
+                              Append (Body_Procedure_List, M_Dict);
+                           end if;
+                        end if;
                      end;
                   end if;
                end loop;
@@ -300,6 +417,8 @@ package body Uml2Code_Classes is
          Insert (Dict, "interfaces", Interface_List);
          Insert (Dict, "enums", Enum_List);
          Insert (Dict, "classes", Class_List);
+         Insert (Dict, "body_functions", Body_Function_List);
+         Insert (Dict, "body_procedures", Body_Procedure_List);
 
          --  Collect vector instantiations for composition relations
          declare
@@ -326,6 +445,10 @@ package body Uml2Code_Classes is
                               Insert (V_Dict, "element_type", Target);
                               Insert
                                 (V_Dict, "vector_name", Target & "_Vectors");
+                                             Insert
+                                                (V_Dict,
+                                                 "is_local",
+                                                 Element_Package (R.To) = Pkg_Name);
                               Append (Vector_List, V_Dict);
                               Has_Vector_Instantiations := True;
                            end;

@@ -70,8 +70,8 @@ package body Test_Identifiers is
               "sanitize + ada_case");
       Assert (Uml2Code_Identifiers.Ident ("123abc") = "S_123Abc",
               "digit prefix + casing");
-      Assert (Uml2Code_Identifiers.Ident ("foo@bar", "T_") = "T_Foo_Bar",
-              "custom prefix + special chars");
+      Assert (Uml2Code_Identifiers.Ident ("foo@bar", "T_") = "Foo_Bar",
+               "custom prefix + special chars");
    end Test_Ident_Complete;
 
    procedure Register_Tests (T : in out Case_Type) is

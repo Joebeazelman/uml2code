@@ -8,7 +8,7 @@ with Ada.Text_IO;              use Ada.Text_IO;
 
 with PlantUML;
 with UML.Model;
-with Uml2Code_Ada_Classes;
+with Uml2Code_Classes;
 
 package body Test_Generator_Class is
 
@@ -33,7 +33,7 @@ package body Test_Generator_Class is
       Ada.Directories.Create_Path (Ada.Directories.Compose (Dir, "src"));
       Ada.Directories.Create_Path (Ada.Directories.Compose (Dir, "tests"));
 
-      Uml2Code_Ada_Classes.Generate
+      Uml2Code_Classes.Generate
         (D              => D,
          Source_Diagram => "test.puml",
          Out_Dir        => Dir);

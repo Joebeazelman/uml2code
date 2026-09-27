@@ -12,14 +12,19 @@ with Ada.Strings.Unbounded;  use Ada.Strings.Unbounded;
 {% if has_vector_instantiations %}
 with Ada.Containers.Vectors;
 {% endif %}
+{% for package in use_packages %}
+with {{ package.name | ada_ident }};
+use {{ package.name | ada_ident }};
+{% endfor %}
 
 package {{ PACKAGE_NAME | ada_ident }} is
+   pragma Elaborate_Body;
 
 {% for enum in enums %}
 {% for comment_line in enum.comment_lines %}
    {{ comment_line.text }}
 {% endfor %}
-   type {{ enum.name | ada_ident }} is ({% for lit in enum.literals %}{{ lit | ada_ident }}{% if not loop.last %}, {% endif %}{% endfor %});
+   type {{ enum.name | ada_ident }} is ({% for lit in enum.literals %}{{ lit.separator }}{{ lit.name | ada_ident }}{% endfor %});
 
 {% endfor %}
 {% for iface in interfaces %}
@@ -27,6 +32,17 @@ package {{ PACKAGE_NAME | ada_ident }} is
    {{ comment_line.text }}
 {% endfor %}
    type {{ iface.name | ada_ident }} is limited interface;
+
+{% endfor %}
+{% for vec in vector_instantiations %}
+{% if vec.is_local %}
+   type {{ vec.element_type | ada_ident }};
+{% endif %}
+   type {{ vec.element_type | ada_ident }}_Access is access all {{ vec.element_type | ada_ident }}'Class;
+
+   package {{ vec.vector_name | ada_ident }} is new Ada.Containers.Vectors
+     (Index_Type   => Positive,
+      Element_Type => {{ vec.element_type | ada_ident }}_Access);
 
 {% endfor %}
 {% for klass in classes %}
@@ -41,20 +57,12 @@ package {{ PACKAGE_NAME | ada_ident }} is
 
 {% for method in klass.methods %}
 {% if method.has_return_type %}
-   function {{ method.name | ada_ident }} (Self : in out {{ klass.name | ada_ident }}) return {{ method.return_type | ada_type }};
+   function {{ method.name | ada_ident }} (Self : in {{ klass.name | ada_ident }}) return {{ method.return_type | ada_type }}{% if method.is_abstract %} is abstract{% endif %};
 {% endif %}
 {% if not method.has_return_type %}
-   procedure {{ method.name | ada_ident }} (Self : in out {{ klass.name | ada_ident }});
+   procedure {{ method.name | ada_ident }} (Self : in out {{ klass.name | ada_ident }}){% if method.is_abstract %} is abstract{% endif %};
 {% endif %}
 {% endfor %}
-
-{% endfor %}
-{% for vec in vector_instantiations %}
-   type {{ vec.element_type | ada_ident }}_Access is access all {{ vec.element_type | ada_ident }}'Class;
-
-   package {{ vec.vector_name | ada_ident }} is new Ada.Containers.Vectors
-     (Index_Type   => Positive,
-      Element_Type => {{ vec.element_type | ada_ident }}_Access);
 
 {% endfor %}
 

@@ -1,3 +1,20 @@
 package body {{PACKAGE_NAME}} is
-   --  Generated: {{GENERATION_DATE}}
+{% for method in body_functions %}
+   pragma Warnings (Off, "function ""{{ method.name | ada_ident }}"" is not referenced");
+   function {{ method.name | ada_ident }} (Self : in {{ method.class_name | ada_ident }}) return {{ method.return_type | ada_type }} is
+      pragma Unreferenced (Self);
+   begin
+      return Result : {{ method.return_type | ada_type }} do
+         raise Program_Error with "Method {{ method.name }} is not implemented";
+      end return;
+   end {{ method.name | ada_ident }};
+   pragma Warnings (On, "function ""{{ method.name | ada_ident }}"" is not referenced");
+{% endfor %}
+{% for method in body_procedures %}
+   procedure {{ method.name | ada_ident }} (Self : in out {{ method.class_name | ada_ident }}) is
+      pragma Unreferenced (Self);
+   begin
+      null;
+   end {{ method.name | ada_ident }};
+{% endfor %}
 end {{PACKAGE_NAME}};

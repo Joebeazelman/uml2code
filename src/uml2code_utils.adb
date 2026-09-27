@@ -1,3 +1,4 @@
+with Ada.Calendar;
 with Ada.Calendar.Formatting;
 with Ada.Directories;
 with Ada.Strings.Fixed;
@@ -44,13 +45,26 @@ package body Uml2Code_Utils is
 
    function Basename_Without_Extension (Path : String) return String is
    begin
-      return Ada.Directories.Base_Name (Path);
+      if Path'Length = 0 then
+         return "";
+      end if;
+      declare
+         Name : constant String := Ada.Directories.Simple_Name (Path);
+      begin
+         for I in reverse Name'Range loop
+            if Name (I) = '.' and then I > Name'First then
+               return Name (Name'First .. I - 1);
+            end if;
+         end loop;
+         return Name;
+      end;
    end Basename_Without_Extension;
 
    function Today return String is
-      use Ada.Calendar.Formatting;
+      Raw : constant String :=
+        Ada.Calendar.Formatting.Image (Ada.Calendar.Clock, False);
    begin
-      return Image (Ada.Calendar.Clock, False);
+      return Raw (Raw'First .. Raw'First + 9);
    end Today;
 
 end Uml2Code_Utils;
