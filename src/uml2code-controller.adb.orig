@@ -1,4 +1,3 @@
-with Ada.Containers.Vectors;
 with Ada.Environment_Variables;
 with Ada.Strings.Unbounded;   use Ada.Strings.Unbounded;
 with Jintp;
@@ -19,11 +18,6 @@ package body UML2Code.Controller is
    use UML_Model.Source;
    use UML_Model.Models;
    use UML_Model.Types;
-
-   package Str_Vectors is new Ada.Containers.Vectors
-     (Index_Type   => Positive,
-      Element_Type => Ada.Strings.Unbounded.Unbounded_String);
-   use Str_Vectors;
 
    Quote : constant Character := '"';
 
@@ -63,9 +57,7 @@ package body UML2Code.Controller is
    is
    begin
       for R of Relations loop
-         if (R.Kind = Inheritance or else R.Kind = Realization)
-           and then R.Source = C.Name
-         then
+         if R.Kind = Inheritance and then R.Source = C.Name then
             return UML2Code.Casing.To_Ada_Case (To_String (R.Target));
          end if;
       end loop;
@@ -78,9 +70,7 @@ package body UML2Code.Controller is
    is
    begin
       for R of Relations loop
-         if (R.Kind = Inheritance or else R.Kind = Realization)
-           and then R.Target = C.Name
-         then
+         if R.Kind = Inheritance and then R.Target = C.Name then
             return True;
          end if;
       end loop;
@@ -92,37 +82,11 @@ package body UML2Code.Controller is
       Relations : Relation_Vector) return Jintp.List
    is
       Result : Jintp.List;
-      Seen   : Str_Vectors.Vector;
-
-      procedure Add_If_New (Name : String) is
-      begin
-         if Name'Length = 0 then
-            return;
-         end if;
-         for S of Seen loop
-            if To_String (S) = Name then
-               return;
-            end if;
-         end loop;
-         Seen.Append (To_Unbounded_String (Name));
-         Jintp.Append (Result, "with " & Name & ";");
-      end Add_If_New;
-
+      Base   : constant String := Derives_From (C, Relations);
    begin
-      Add_If_New (Derives_From (C, Relations));
-
-      for R of Relations loop
-         if R.Source = C.Name then
-            case R.Kind is
-               when Composition | Aggregation | Association =>
-                  Add_If_New (UML2Code.Casing.To_Ada_Case
-                              (To_String (R.Target)));
-               when others =>
-                  null;
-            end case;
-         end if;
-      end loop;
-
+      if Base'Length > 0 then
+         Jintp.Append (Result, "with " & Base & ";");
+      end if;
       return Result;
    end With_Clauses;
 
@@ -144,20 +108,8 @@ package body UML2Code.Controller is
       end if;
    end Type_Opening;
 
-   function Relation_Field_Name (R : Relation) return String is
-   begin
-      if Length (R.Target_Role) > 0 then
-         return UML2Code.Casing.To_Snake_Case
-           (To_String (R.Target_Role));
-      else
-         return UML2Code.Casing.To_Snake_Case
-           (To_String (R.Target));
-      end if;
-   end Relation_Field_Name;
-
-   function Record_Body_Lines
-     (C         : UML_Model.Class.Class_Model;
-      Relations : Relation_Vector) return Jintp.List
+   function Record_Body_Lines (C : UML_Model.Class.Class_Model)
+     return Jintp.List
    is
       Result : Jintp.List;
       Any    : Boolean := False;
@@ -172,30 +124,6 @@ package body UML2Code.Controller is
             & To_Ada_Type_Name (To_String (P.Of_Type))
             & ";");
       end loop;
-
-      for R of Relations loop
-         if R.Source = C.Name then
-            case R.Kind is
-               when Composition =>
-                  Any := True;
-                  Jintp.Append
-                    (Result,
-                     "      " & Relation_Field_Name (R) & " : "
-                     & UML2Code.Casing.To_Ada_Case (To_String (R.Target))
-                     & "_T;");
-               when Aggregation | Association =>
-                  Any := True;
-                  Jintp.Append
-                    (Result,
-                     "      " & Relation_Field_Name (R) & " : access "
-                     & UML2Code.Casing.To_Ada_Case (To_String (R.Target))
-                     & "_T;");
-               when others =>
-                  null;
-            end case;
-         end if;
-      end loop;
-
       if not Any then
          Jintp.Append (Result, "      null;");
       end if;
@@ -453,8 +381,7 @@ package body UML2Code.Controller is
       Jintp.Insert (D, "derives_from", Derives_From (C, Relations));
       Jintp.Insert (D, "with_clauses", With_Clauses (C, Relations));
       Jintp.Insert (D, "type_opening", Type_Opening (C, Relations));
-      Jintp.Insert (D, "record_body_lines",
-                    Record_Body_Lines (C, Relations));
+      Jintp.Insert (D, "record_body_lines", Record_Body_Lines (C));
       for P of C.Attributes loop
          Jintp.Append (Attrs, Property_Dictionary (P));
       end loop;
