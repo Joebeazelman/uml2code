@@ -1,1 +1,1 @@
---  {{ kind }}: {{ source }} -> {{ target }}
+--  {{ kind }}: {{ source|ada }} -> {{ target|ada }}
