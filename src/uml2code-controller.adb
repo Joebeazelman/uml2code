@@ -24,9 +24,6 @@ package body UML2Code.Controller is
    function Transition_Dictionary (T : UML_Model.State_Machine.Transition)
      return Jintp.Dictionary;
 
-   --  Package a Stereotype_Vector as a JinTP List of plain strings.
-   --  Templates iterate the list and prepend their own comment
-   --  markers.
    function Stereotype_List
      (Stereotypes : Stereotype_Vector) return Jintp.List
    is
@@ -37,6 +34,43 @@ package body UML2Code.Controller is
       end loop;
       return Result;
    end Stereotype_List;
+
+   --  Return the Ada-cased name of the class this one inherits from,
+   --  or "" if none. Multiple inheritance is not representable in
+   --  Ada; the first matching relation wins.
+   function Derives_From
+     (C         : UML_Model.Class.Class_Model;
+      Relations : Relation_Vector) return String
+   is
+   begin
+      for R of Relations loop
+         if R.Kind = Inheritance and then R.Source = C.Name then
+            return UML2Code.Casing.To_Ada_Case (To_String (R.Target));
+         end if;
+      end loop;
+      return "";
+   end Derives_From;
+
+   --  Return non-inheritance relations outgoing from this class as
+   --  short comment strings, e.g. "composes Engine". Inheritance is
+   --  handled by Derives_From; here we only document composition,
+   --  aggregation, and association.
+   function Relation_Comments
+     (C         : UML_Model.Class.Class_Model;
+      Relations : Relation_Vector) return Jintp.List
+   is
+      Result : Jintp.List;
+   begin
+      for R of Relations loop
+         if R.Source = C.Name and then R.Kind /= Inheritance then
+            Jintp.Append
+              (Result,
+               Relation_Kind'Image (R.Kind) & " "
+               & UML2Code.Casing.To_Ada_Case (To_String (R.Target)));
+         end if;
+      end loop;
+      return Result;
+   end Relation_Comments;
 
    function State_Body_Expression
      (S           : UML_Model.State_Machine.State;
@@ -102,14 +136,11 @@ package body UML2Code.Controller is
       return D;
    end Property_Dictionary;
 
-   --  Render an operation as a single Ada subprogram declaration
-   --  string. The template places this verbatim.
    function Operation_Declaration (O : UML_Model.Class.Operation)
      return String
    is
-      Result    : Unbounded_String;
-      Has_Ret   : constant Boolean :=
-        Is_Valid (O.Return_Type.Name);
+      Result     : Unbounded_String;
+      Has_Ret    : constant Boolean := Is_Valid (O.Return_Type.Name);
       Has_Params : constant Boolean := not O.Parameters.Is_Empty;
    begin
       if Has_Ret then
@@ -174,8 +205,51 @@ package body UML2Code.Controller is
       return D;
    end Operation_Dictionary;
 
-   function Class_Dictionary (C : UML_Model.Class.Class_Model)
-     return Jintp.Dictionary
+   --  The opening line of the record declaration: either a plain
+   --  record or a derivation from a base type.
+   function Type_Opening
+     (C         : UML_Model.Class.Class_Model;
+      Relations : Relation_Vector) return String
+   is
+      Name : constant String :=
+        UML2Code.Casing.To_Ada_Case (To_String (C.Name));
+      Base : constant String := Derives_From (C, Relations);
+   begin
+      if Base'Length > 0 then
+         return "type " & Name & "_T is new " & Base
+                & "_T with record";
+      else
+         return "type " & Name & "_T is record";
+      end if;
+   end Type_Opening;
+
+   --  One string per line of the record body. Empty records get a
+   --  single "null;" line so the template needs no conditionals.
+   function Record_Body_Lines (C : UML_Model.Class.Class_Model)
+     return Jintp.List
+   is
+      Result : Jintp.List;
+      Any    : Boolean := False;
+   begin
+      for P of C.Attributes loop
+         Any := True;
+         Jintp.Append
+           (Result,
+            "      "
+            & UML2Code.Casing.To_Snake_Case (To_String (P.Name))
+            & " : "
+            & UML2Code.Casing.To_Ada_Case (To_String (P.Of_Type))
+            & ";");
+      end loop;
+      if not Any then
+         Jintp.Append (Result, "      null;");
+      end if;
+      return Result;
+   end Record_Body_Lines;
+
+   function Class_Dictionary
+     (C         : UML_Model.Class.Class_Model;
+      Relations : Relation_Vector) return Jintp.Dictionary
    is
       D     : Jintp.Dictionary;
       Attrs : Jintp.List;
@@ -185,6 +259,10 @@ package body UML2Code.Controller is
       Jintp.Insert (D, "visibility",
                     UML_Model.Class.Visibility'Image (C.Visibility));
       Jintp.Insert (D, "stereotypes", Stereotype_List (C.Stereotypes));
+      Jintp.Insert (D, "derives_from", Derives_From (C, Relations));
+      Jintp.Insert (D, "type_opening", Type_Opening (C, Relations));
+      Jintp.Insert (D, "record_body_lines",
+                    Record_Body_Lines (C));
       for P of C.Attributes loop
          Jintp.Append (Attrs, Property_Dictionary (P));
       end loop;
@@ -296,7 +374,7 @@ package body UML2Code.Controller is
       for C of M.Classes loop
          declare
             R : constant Emit_Results.Result :=
-              Render_One (Path, Class_Dictionary (C), Env);
+              Render_One (Path, Class_Dictionary (C, M.Relations), Env);
          begin
             if not R.Success then
                return R;
