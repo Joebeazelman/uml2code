@@ -1,0 +1,9 @@
+with "uml_model";
+with "jintp";
+
+project UML2Code is
+   for Source_Dirs use ("src");
+   for Object_Dir use "obj";
+   for Main use ("uml2code_main.adb");
+   for Exec_Dir use "bin";
+end UML2Code;

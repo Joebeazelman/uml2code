@@ -1,0 +1,16 @@
+name = "uml2code"
+description = "UML to Ada code generator"
+version = "0.1.0-dev"
+licenses = "BSD-3-Clause"
+authors = ["Joe Beazelman"]
+maintainers = ["Joe Beazelman <joe@example.com>"]
+maintainers-logins = ["Joebeazelman"]
+website = "https://github.com/Joebeazelman/uml2code"
+tags = ["uml", "code-generation", "ada"]
+
+[[depends-on]]
+uml_model = "*"
+jintp = "*"
+
+[[pins]]
+uml_model = { path='../uml_model' }
