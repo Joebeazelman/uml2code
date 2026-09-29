@@ -1,6 +1,7 @@
 with Ada.Environment_Variables;
 with Ada.Strings.Unbounded;   use Ada.Strings.Unbounded;
 with Jintp;
+with UML2Code.Casing;
 with UML2Code.Filters;
 with UML2Code.Manifests;
 with UML2Code.Paths;
@@ -18,8 +19,73 @@ package body UML2Code.Controller is
    use UML_Model.Models;
    use UML_Model.Types;
 
+   Quote : constant Character := '"';
+
    function Transition_Dictionary (T : UML_Model.State_Machine.Transition)
      return Jintp.Dictionary;
+
+   --  Package a Stereotype_Vector as a JinTP List of plain strings.
+   --  Templates iterate the list and prepend their own comment
+   --  markers.
+   function Stereotype_List
+     (Stereotypes : Stereotype_Vector) return Jintp.List
+   is
+      Result : Jintp.List;
+   begin
+      for S of Stereotypes loop
+         Jintp.Append (Result, To_String (S));
+      end loop;
+      return Result;
+   end Stereotype_List;
+
+   function State_Body_Expression
+     (S           : UML_Model.State_Machine.State;
+      Transitions : UML_Model.State_Machine.Transition_Vector)
+     return String
+   is
+      function Cased (Id : Identifier) return String is
+        (UML2Code.Casing.To_Ada_Case (To_String (Id)));
+
+      Has_Outgoing : Boolean := False;
+   begin
+      for T of Transitions loop
+         if T.Source = S.Name then
+            Has_Outgoing := True;
+            exit;
+         end if;
+      end loop;
+
+      if not Has_Outgoing then
+         return Cased (S.Name);
+      end if;
+
+      declare
+         Result : Unbounded_String := To_Unbounded_String ("(");
+         First  : Boolean := True;
+      begin
+         for T of Transitions loop
+            if T.Source = S.Name then
+               if First then
+                  Append (Result, "if ");
+                  First := False;
+               else
+                  Append (Result, "elsif ");
+               end if;
+               Append (Result, "Event = ");
+               Append (Result, Quote);
+               Append (Result, To_String (T.Event));
+               Append (Result, Quote);
+               Append (Result, " then ");
+               Append (Result, Cased (T.Target));
+               Append (Result, " ");
+            end if;
+         end loop;
+         Append (Result, "else ");
+         Append (Result, Cased (S.Name));
+         Append (Result, ")");
+         return To_String (Result);
+      end;
+   end State_Body_Expression;
 
    function Property_Dictionary (P : UML_Model.Class.Property)
      return Jintp.Dictionary
@@ -32,6 +98,7 @@ package body UML2Code.Controller is
                     UML_Model.Class.Visibility'Image (P.Visibility));
       Jintp.Insert (D, "multiplicity", To_String (P.Multiplicity));
       Jintp.Insert (D, "default",      To_String (P.Default));
+      Jintp.Insert (D, "stereotypes",  Stereotype_List (P.Stereotypes));
       return D;
    end Property_Dictionary;
 
@@ -45,6 +112,7 @@ package body UML2Code.Controller is
       Jintp.Insert (D, "return_type", To_String (O.Return_Type));
       Jintp.Insert (D, "visibility",
                     UML_Model.Class.Visibility'Image (O.Visibility));
+      Jintp.Insert (D, "stereotypes", Stereotype_List (O.Stereotypes));
       for P of O.Parameters loop
          Jintp.Append (Params, Property_Dictionary (P));
       end loop;
@@ -59,9 +127,10 @@ package body UML2Code.Controller is
       Attrs : Jintp.List;
       Ops   : Jintp.List;
    begin
-      Jintp.Insert (D, "name",       To_String (C.Name));
+      Jintp.Insert (D, "name",        To_String (C.Name));
       Jintp.Insert (D, "visibility",
                     UML_Model.Class.Visibility'Image (C.Visibility));
+      Jintp.Insert (D, "stereotypes", Stereotype_List (C.Stereotypes));
       for P of C.Attributes loop
          Jintp.Append (Attrs, Property_Dictionary (P));
       end loop;
@@ -82,6 +151,7 @@ package body UML2Code.Controller is
       Jintp.Insert (D, "source_role",  To_String (R.Source_Role));
       Jintp.Insert (D, "target_role",  To_String (R.Target_Role));
       Jintp.Insert (D, "multiplicity", To_String (R.Multiplicity));
+      Jintp.Insert (D, "stereotypes",  Stereotype_List (R.Stereotypes));
       return D;
    end Relation_Dictionary;
 
@@ -90,22 +160,21 @@ package body UML2Code.Controller is
    is
       D : Jintp.Dictionary;
    begin
-      Jintp.Insert (D, "source", To_String (T.Source));
-      Jintp.Insert (D, "target", To_String (T.Target));
-      Jintp.Insert (D, "event",  To_String (T.Event));
-      Jintp.Insert (D, "guard",  To_String (T.Guard));
-      Jintp.Insert (D, "action", To_String (T.Action));
+      Jintp.Insert (D, "source",      To_String (T.Source));
+      Jintp.Insert (D, "target",      To_String (T.Target));
+      Jintp.Insert (D, "event",       To_String (T.Event));
+      Jintp.Insert (D, "guard",       To_String (T.Guard));
+      Jintp.Insert (D, "action",      To_String (T.Action));
+      Jintp.Insert (D, "stereotypes", Stereotype_List (T.Stereotypes));
       return D;
    end Transition_Dictionary;
 
-   --  State dictionary now includes an "outgoing" list: every
-   --  transition whose Source matches this state's name.
    function State_Dictionary
      (S           : UML_Model.State_Machine.State;
       Transitions : UML_Model.State_Machine.Transition_Vector)
      return Jintp.Dictionary
    is
-      D   : Jintp.Dictionary;
+      D        : Jintp.Dictionary;
       Outgoing : Jintp.List;
    begin
       Jintp.Insert (D, "name",         To_String (S.Name));
@@ -114,6 +183,9 @@ package body UML2Code.Controller is
       Jintp.Insert (D, "parent",       To_String (S.Parent));
       Jintp.Insert (D, "entry_action", To_String (S.Entry_Action));
       Jintp.Insert (D, "exit_action",  To_String (S.Exit_Action));
+      Jintp.Insert (D, "case_arm",
+                    State_Body_Expression (S, Transitions));
+      Jintp.Insert (D, "stereotypes",  Stereotype_List (S.Stereotypes));
 
       for T of Transitions loop
          if T.Source = S.Name then
@@ -132,8 +204,9 @@ package body UML2Code.Controller is
       St : Jintp.List;
       Tr : Jintp.List;
    begin
-      Jintp.Insert (D, "name",    To_String (M.Name));
-      Jintp.Insert (D, "initial", To_String (M.Initial));
+      Jintp.Insert (D, "name",        To_String (M.Name));
+      Jintp.Insert (D, "initial",     To_String (M.Initial));
+      Jintp.Insert (D, "stereotypes", Stereotype_List (M.Stereotypes));
       for S of M.States loop
          Jintp.Append (St, State_Dictionary (S, M.Transitions));
       end loop;
@@ -144,8 +217,6 @@ package body UML2Code.Controller is
       Jintp.Insert (D, "transitions", Tr);
       return D;
    end State_Machine_Dictionary;
-
-   --  ---- Rendering ----
 
    function Render_One
      (Template_Path : String;
