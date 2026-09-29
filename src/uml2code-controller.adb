@@ -671,6 +671,38 @@ package body UML2Code.Controller is
 
    --  ---- Walkers ----
 
+   --  Emit code-body templates only for classes that declare
+   --  operations. A package with only types does not need a body,
+   --  and Ada rejects one if it appears.
+   function Walk_Class_Bodies
+     (Path : String;
+      Env  : in out Jintp.Environment;
+      M    : Model) return Emit_Results.Result
+   is
+      Buf : Unbounded_String;
+   begin
+      for C of M.Classes loop
+         if not C.Operations.Is_Empty then
+            declare
+               R     : constant Emit_Results.Result :=
+                 Render_One (Path, Class_Dictionary (C, M.Relations), Env);
+               Chunk : constant String := To_String (R.Output);
+            begin
+               if not R.Success then
+                  return R;
+               end if;
+               Append (Buf, Chunk);
+               if Chunk'Length > 0
+                 and then Chunk (Chunk'Last) /= ASCII.LF
+               then
+                  Append (Buf, ASCII.LF);
+               end if;
+            end;
+         end if;
+      end loop;
+      return Emit_Results.Ok (Buf);
+   end Walk_Class_Bodies;
+
    function Walk_Classes
      (Path : String;
       Env  : in out Jintp.Environment;
@@ -680,13 +712,19 @@ package body UML2Code.Controller is
    begin
       for C of M.Classes loop
          declare
-            R : constant Emit_Results.Result :=
+            R  : constant Emit_Results.Result :=
               Render_One (Path, Class_Dictionary (C, M.Relations), Env);
+            Chunk : constant String := To_String (R.Output);
          begin
             if not R.Success then
                return R;
             end if;
-            Append (Buf, To_String (R.Output));
+            Append (Buf, Chunk);
+            if Chunk'Length > 0
+              and then Chunk (Chunk'Last) /= ASCII.LF
+            then
+               Append (Buf, ASCII.LF);
+            end if;
          end;
       end loop;
       return Emit_Results.Ok (Buf);
@@ -744,9 +782,21 @@ package body UML2Code.Controller is
       M       : Model) return Emit_Results.Result
    is
    begin
-      if Section = "code-spec" or else Section = "code-body" then
+      if Section = "code-spec" then
          if Kind = "class" then
             return Walk_Classes (Path, Env, M);
+         elsif Kind = "relation" then
+            return Walk_Relations (Path, Env, M);
+         elsif Kind = "state_machine" then
+            return Walk_State_Machines (Path, Env, M);
+         else
+            return Emit_Results.Err
+              (Make_Error (No_Location,
+                           "unknown element kind: " & Kind));
+         end if;
+      elsif Section = "code-body" then
+         if Kind = "class" then
+            return Walk_Class_Bodies (Path, Env, M);
          elsif Kind = "relation" then
             return Walk_Relations (Path, Env, M);
          elsif Kind = "state_machine" then

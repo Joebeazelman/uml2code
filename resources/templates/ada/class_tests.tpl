@@ -8,8 +8,8 @@ package {{ name|ada }}_Tests is
    overriding function Name (T : Test) return AUnit.Message_String;
    overriding procedure Register_Tests (T : in out Test);
 
-   procedure Test_Construct (T : in out Test_CaseClass);
-{% for op in operations %}   procedure Test_{{ op.name|ada }} (T : in out Test_CaseClass);
+   procedure Test_Construct (T : in out Test_Case'Class);
+{% for op in operations %}   procedure Test_{{ op.name|ada }} (T : in out Test_Case'Class);
 {% endfor %}
    function Suite return AUnit.Test_Suites.Access_Test_Suite;
 

@@ -1,4 +1,5 @@
 with "uml_model";
+with "plantuml_parser";
 with "jintp";
 
 project UML2Code is
