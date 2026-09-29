@@ -49,7 +49,7 @@ package body UML2Code_Tests.Test_Manifests is
             Assert (Set_Name (R.Value) = "ada", "set name is ada");
             Assert (Language (R.Value) = "Ada", "language is Ada");
             Assert
-              (Natural (Templates (R.Value).Length) >= 3,
+              (Natural (Code_Spec_Templates (R.Value).Length) >= 3,
                "at least three templates declared");
          end if;
       end;

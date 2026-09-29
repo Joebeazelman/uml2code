@@ -474,7 +474,10 @@ package body UML2Code.Controller is
       Jintp.Insert (D, "target",       To_String (R.Target));
       Jintp.Insert (D, "source_role",  To_String (R.Source_Role));
       Jintp.Insert (D, "target_role",  To_String (R.Target_Role));
-      Jintp.Insert (D, "multiplicity", To_String (R.Multiplicity));
+      Jintp.Insert (D, "source_multiplicity",
+                    To_String (R.Source_Multiplicity));
+      Jintp.Insert (D, "target_multiplicity",
+                    To_String (R.Target_Multiplicity));
       Jintp.Insert (D, "stereotypes",  Stereotype_List (R.Stereotypes));
       return D;
    end Relation_Dictionary;
