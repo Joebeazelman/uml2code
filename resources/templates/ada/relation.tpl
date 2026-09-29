@@ -1,1 +1,1 @@
---  {{ kind }}: {{ source|ada }} -> {{ target|ada }}
+--  Relation ({{ kind }}): {{ source|ada }} -> {{ target|ada }}
