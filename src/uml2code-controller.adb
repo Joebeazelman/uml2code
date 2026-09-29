@@ -103,11 +103,11 @@ package body UML2Code.Controller is
    is
       D : Jintp.Dictionary;
    begin
-      Jintp.Insert (D, "source",  To_String (T.Source));
-      Jintp.Insert (D, "target",  To_String (T.Target));
-      Jintp.Insert (D, "trigger", To_String (T.Trigger));
-      Jintp.Insert (D, "guard",   To_String (T.Guard));
-      Jintp.Insert (D, "action",  To_String (T.Action));
+      Jintp.Insert (D, "source", To_String (T.Source));
+      Jintp.Insert (D, "target", To_String (T.Target));
+      Jintp.Insert (D, "event",  To_String (T.Event));
+      Jintp.Insert (D, "guard",  To_String (T.Guard));
+      Jintp.Insert (D, "action", To_String (T.Action));
       return D;
    end Transition_Dictionary;
 

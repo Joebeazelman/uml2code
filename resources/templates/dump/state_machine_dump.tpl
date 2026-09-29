@@ -16,7 +16,7 @@ STATE MACHINE: {{ name }}
   Transitions:
 {% for t in transitions %}
     {{ t.source }} -> {{ t.target }}
-      trigger : {{ t.trigger }}
-      guard   : {{ t.guard }}
-      action  : {{ t.action }}
+      event  : {{ t.event }}
+      guard  : {{ t.guard }}
+      action : {{ t.action }}
 {% endfor %}
