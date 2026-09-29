@@ -1,14 +1,15 @@
 with Ada.Directories;
 with Ada.Environment_Variables;
 with Ada.Text_IO;
-with Ada.Strings.Fixed; use Ada.Strings.Fixed;
+with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with Ada.Strings.Fixed;     use Ada.Strings.Fixed;
 
 package body UML2Code.CLI.Settings is
 
    function Trim (S : String) return String is
      (Ada.Strings.Fixed.Trim (S, Ada.Strings.Both));
 
-   procedure Parse_Line (T : String; S : in out Settings) is
+   procedure Parse_Line (T : String; S : in out UML2Code.Settings) is
       Trimmed : constant String := Trim (T);
    begin
       if Trimmed'Length = 0 or else Trimmed (Trimmed'First) = '#' then
@@ -25,8 +26,10 @@ package body UML2Code.CLI.Settings is
             return;
          end if;
          declare
-            Key : constant String := Trim (Trimmed (Trimmed'First .. Eq - 1));
-            Val : constant String := Trim (Trimmed (Eq + 1 .. Trimmed'Last));
+            Key : constant String :=
+              Trim (Trimmed (Trimmed'First .. Eq - 1));
+            Val : constant String :=
+              Trim (Trimmed (Eq + 1 .. Trimmed'Last));
          begin
             if Key = "author" then
                S.Author := To_Unbounded_String (Val);
@@ -39,8 +42,8 @@ package body UML2Code.CLI.Settings is
       end;
    end Parse_Line;
 
-   function Load return Settings is
-      Result : Settings := Empty_Settings;
+   function Load return UML2Code.Settings is
+      Result : UML2Code.Settings := UML2Code.Empty_Settings;
       Path   : constant String :=
         (if Ada.Environment_Variables.Exists ("UML2CODE_SETTINGS")
          then Ada.Environment_Variables.Value ("UML2CODE_SETTINGS")

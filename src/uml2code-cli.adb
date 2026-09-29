@@ -9,6 +9,7 @@ with UML2Code.Manifests;
 with UML2Code.CLI.Colors;      use UML2Code.CLI.Colors;
 with UML2Code.CLI.Definitions; use UML2Code.CLI.Definitions;
 with UML2Code.CLI.Help;
+with UML2Code.CLI.Settings;
 with UML2Code.CLI.Writer;
 with PlantUML_Parser;
 
@@ -55,13 +56,100 @@ package body UML2Code.CLI is
       return 0;
    end Handle_List;
 
+   function Handle_Check return Integer is
+      Count : constant Natural := Ada.Command_Line.Argument_Count;
+   begin
+      if Count < 2 then
+         Help.Print_Usage_Error ("check", "INPUT is required");
+         return 1;
+      end if;
+
+      declare
+         Input    : constant String := Ada.Command_Line.Argument (2);
+         Contents : constant String := Read_File (Input);
+         Parse_Res : constant PlantUML_Parser.Parse_Results.Result :=
+           PlantUML_Parser.Parse (Contents);
+      begin
+         if Parse_Res.Success then
+            return 0;
+         else
+            Help.Print_Error (To_String (Parse_Res.Error));
+            return 1;
+         end if;
+      end;
+   exception
+      when Ada.Text_IO.Name_Error =>
+         Help.Print_Error ("cannot open " & Ada.Command_Line.Argument (2));
+         return 1;
+   end Handle_Check;
+
+   --  Render the "dump" template set and print the four buffers to
+   --  stdout. The dump set produces reference material, not code, so
+   --  it isn't split per package.
+   function Handle_Dump return Integer is
+      Count : constant Natural := Ada.Command_Line.Argument_Count;
+   begin
+      if Count < 2 then
+         Help.Print_Usage_Error ("dump", "INPUT is required");
+         return 1;
+      end if;
+
+      declare
+         Input    : constant String := Ada.Command_Line.Argument (2);
+         Contents : constant String := Read_File (Input);
+         Parse_Res : constant PlantUML_Parser.Parse_Results.Result :=
+           PlantUML_Parser.Parse (Contents);
+      begin
+         if not Parse_Res.Success then
+            Help.Print_Error (To_String (Parse_Res.Error));
+            return 1;
+         end if;
+
+         Ada.Environment_Variables.Set ("UML2CODE_TEMPLATE_SET", "dump");
+
+         declare
+            Settings : constant UML2Code.Settings :=
+              UML2Code.CLI.Settings.Load;
+            Gen_Res  : constant UML2Code.Generate_Results.Result :=
+              UML2Code.Generate (Parse_Res.Output, Settings);
+         begin
+            Ada.Environment_Variables.Clear ("UML2CODE_TEMPLATE_SET");
+
+            if not Gen_Res.Success then
+               Help.Print_Error (To_String (Gen_Res.Error));
+               return 1;
+            end if;
+
+            if Length (Gen_Res.Output.Code_Spec) > 0 then
+               Ada.Text_IO.Put (To_String (Gen_Res.Output.Code_Spec));
+            end if;
+            if Length (Gen_Res.Output.Code_Body) > 0 then
+               Ada.Text_IO.Put (To_String (Gen_Res.Output.Code_Body));
+            end if;
+            if Length (Gen_Res.Output.Test_Spec) > 0 then
+               Ada.Text_IO.Put (To_String (Gen_Res.Output.Test_Spec));
+            end if;
+            if Length (Gen_Res.Output.Test_Body) > 0 then
+               Ada.Text_IO.Put (To_String (Gen_Res.Output.Test_Body));
+            end if;
+         end;
+         return 0;
+      end;
+   exception
+      when Ada.Text_IO.Name_Error =>
+         Help.Print_Error ("cannot open " & Ada.Command_Line.Argument (2));
+         return 1;
+   end Handle_Dump;
+
    function Handle_Generate return Integer is
       Input      : Unbounded_String;
       Target_Set : Unbounded_String;
       Output_Dir : Unbounded_String := To_Unbounded_String ("src");
-      Dry_Run    : Boolean := False;
-      Count      : constant Natural := Ada.Command_Line.Argument_Count;
-      I          : Positive := 2;   --  Skip "generate" itself
+      Dry_Run          : Boolean := False;
+      Author_Override  : Unbounded_String;
+      Company_Override : Unbounded_String;
+      Count            : constant Natural := Ada.Command_Line.Argument_Count;
+      I                : Positive := 2;   --  Skip "generate" itself
    begin
       while I <= Count loop
          declare
@@ -95,6 +183,32 @@ package body UML2Code.CLI is
             elsif Starts_With (Arg, "--output=") then
                Output_Dir :=
                  To_Unbounded_String (Value_Of (Arg, "--output"));
+               I := I + 1;
+            elsif Arg = "-a" or else Arg = "--author" then
+               if I + 1 <= Count then
+                  Author_Override :=
+                    To_Unbounded_String (Ada.Command_Line.Argument (I + 1));
+                  I := I + 2;
+               else
+                  Help.Print_Usage_Error ("generate", "-a requires a value");
+                  return 1;
+               end if;
+            elsif Starts_With (Arg, "--author=") then
+               Author_Override :=
+                 To_Unbounded_String (Value_Of (Arg, "--author"));
+               I := I + 1;
+            elsif Arg = "-c" or else Arg = "--company" then
+               if I + 1 <= Count then
+                  Company_Override :=
+                    To_Unbounded_String (Ada.Command_Line.Argument (I + 1));
+                  I := I + 2;
+               else
+                  Help.Print_Usage_Error ("generate", "-c requires a value");
+                  return 1;
+               end if;
+            elsif Starts_With (Arg, "--company=") then
+               Company_Override :=
+                 To_Unbounded_String (Value_Of (Arg, "--company"));
                I := I + 1;
             elsif Arg = "-h" or else Arg = "--help" then
                Help.Print_Command_Help ("generate");
@@ -135,9 +249,17 @@ package body UML2Code.CLI is
             end if;
 
             declare
-               Gen_Res : constant UML2Code.Generate_Results.Result :=
-                 UML2Code.Generate (Parse_Res.Output);
+               S : UML2Code.Settings := UML2Code.CLI.Settings.Load;
+               Gen_Res : UML2Code.Generate_Results.Result;
             begin
+               if Length (Author_Override) > 0 then
+                  S.Author := Author_Override;
+               end if;
+               if Length (Company_Override) > 0 then
+                  S.Company := Company_Override;
+               end if;
+
+               Gen_Res := UML2Code.Generate (Parse_Res.Output, S);
                if not Gen_Res.Success then
                   Help.Print_Error (To_String (Gen_Res.Error));
                   return 1;
@@ -189,11 +311,9 @@ package body UML2Code.CLI is
          elsif First = "generate" then
             return Handle_Generate;
          elsif First = "check" then
-            Help.Print_Error ("check: not yet implemented");
-            return 1;
+            return Handle_Check;
          elsif First = "dump" then
-            Help.Print_Error ("dump: not yet implemented");
-            return 1;
+            return Handle_Dump;
          else
             Help.Print_Error ("unknown command: " & First);
             Ada.Text_IO.Put_Line

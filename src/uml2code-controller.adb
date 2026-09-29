@@ -27,7 +27,18 @@ package body UML2Code.Controller is
 
    Quote : constant Character := '"';
 
+   Current_Settings : UML2Code.Settings := UML2Code.Empty_Settings;
+
    --  ---- Small helpers, in dependency order ----
+
+   function Settings_Dictionary return Jintp.Dictionary is
+      D : Jintp.Dictionary;
+   begin
+      Jintp.Insert (D, "author",    To_String (Current_Settings.Author));
+      Jintp.Insert (D, "company",   To_String (Current_Settings.Company));
+      Jintp.Insert (D, "copyright", To_String (Current_Settings.Copyright));
+      return D;
+   end Settings_Dictionary;
 
    function Stereotype_List
      (Stereotypes : Stereotype_Vector) return Jintp.List
@@ -475,6 +486,7 @@ package body UML2Code.Controller is
       Jintp.Insert (D, "multiplicity", To_String (P.Multiplicity));
       Jintp.Insert (D, "default",      To_String (P.Default));
       Jintp.Insert (D, "stereotypes",  Stereotype_List (P.Stereotypes));
+      Jintp.Insert (D, "settings",     Settings_Dictionary);
       return D;
    end Property_Dictionary;
 
@@ -539,6 +551,7 @@ package body UML2Code.Controller is
          Jintp.Append (Params, Property_Dictionary (P));
       end loop;
       Jintp.Insert (D, "parameters", Params);
+      Jintp.Insert (D, "settings",   Settings_Dictionary);
       return D;
    end Operation_Dictionary;
 
@@ -571,6 +584,7 @@ package body UML2Code.Controller is
       end loop;
       Jintp.Insert (D, "attributes", Attrs);
       Jintp.Insert (D, "operations", Ops);
+      Jintp.Insert (D, "settings",   Settings_Dictionary);
       return D;
    end Class_Dictionary;
 
@@ -587,6 +601,7 @@ package body UML2Code.Controller is
       Jintp.Insert (D, "target_multiplicity",
                     To_String (R.Target_Multiplicity));
       Jintp.Insert (D, "stereotypes",  Stereotype_List (R.Stereotypes));
+      Jintp.Insert (D, "settings",     Settings_Dictionary);
       return D;
    end Relation_Dictionary;
 
@@ -601,6 +616,7 @@ package body UML2Code.Controller is
       Jintp.Insert (D, "guard",       To_String (T.Guard));
       Jintp.Insert (D, "action",      To_String (T.Action));
       Jintp.Insert (D, "stereotypes", Stereotype_List (T.Stereotypes));
+      Jintp.Insert (D, "settings",    Settings_Dictionary);
       return D;
    end Transition_Dictionary;
 
@@ -629,6 +645,7 @@ package body UML2Code.Controller is
       end loop;
 
       Jintp.Insert (D, "outgoing", Outgoing);
+      Jintp.Insert (D, "settings", Settings_Dictionary);
       return D;
    end State_Dictionary;
 
@@ -650,6 +667,7 @@ package body UML2Code.Controller is
       end loop;
       Jintp.Insert (D, "states",      St);
       Jintp.Insert (D, "transitions", Tr);
+      Jintp.Insert (D, "settings",    Settings_Dictionary);
       return D;
    end State_Machine_Dictionary;
 
@@ -905,11 +923,16 @@ package body UML2Code.Controller is
           Test_Body => Test_Body));
    end Emit_With_Set;
 
-   function Emit (M : Model) return Pipeline_Results.Result is
+   function Emit
+     (M : Model;
+      S : UML2Code.Settings) return Pipeline_Results.Result
+   is
       Root_Res  : constant Paths.Search_Result := Paths.Find_Templates_Root;
       Preferred : constant String :=
         Ada.Environment_Variables.Value ("UML2CODE_TEMPLATE_SET", "");
    begin
+      Current_Settings := S;
+
       if not Root_Res.Success then
          return Pipeline_Results.Err (Root_Res.Error);
       end if;
