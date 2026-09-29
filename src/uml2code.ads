@@ -4,13 +4,18 @@ with UML_Model.Source;      use UML_Model.Source;
 
 package UML2Code is
 
-   --  The output of a generation run. Code holds the target source;
-   --  Tests holds any generated test starter, which may be empty
-   --  when the template set declares no test templates.
+   --  The output of a generation run.
+   --
+   --  Code_Spec / Code_Body: the target source and its body.
+   --  Test_Spec / Test_Body: the generated test starter, split the
+   --  same way. Any buffer may be empty when the template set
+   --  declares no templates for that section.
 
    type Generated_Output is record
-      Code  : Unbounded_String;
-      Tests : Unbounded_String;
+      Code_Spec : Unbounded_String;
+      Code_Body : Unbounded_String;
+      Test_Spec : Unbounded_String;
+      Test_Body : Unbounded_String;
    end record;
 
    package Generate_Results is new Results (Output_Type => Generated_Output);

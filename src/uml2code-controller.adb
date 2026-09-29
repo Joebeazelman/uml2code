@@ -225,6 +225,66 @@ package body UML2Code.Controller is
       return To_String (Result);
    end Operation_Declaration;
 
+   --  The body of an operation, as a list of source lines. Procedures
+   --  get "null"; functions raise Program_Error. The developer
+   --  replaces these with real implementations.
+   function Operation_Body_Lines (O : UML_Model.Class.Operation)
+     return Jintp.List
+   is
+      Result  : Jintp.List;
+      Name    : constant String :=
+        UML2Code.Casing.To_Ada_Case (To_String (O.Name));
+      Has_Ret : constant Boolean := Is_Valid (O.Return_Type.Name);
+      Has_Par : constant Boolean := not O.Parameters.Is_Empty;
+      Sig     : Unbounded_String;
+   begin
+      if Has_Ret then
+         Append (Sig, "   function ");
+      else
+         Append (Sig, "   procedure ");
+      end if;
+      Append (Sig, Name);
+
+      if Has_Par then
+         Append (Sig, " (");
+         declare
+            First : Boolean := True;
+         begin
+            for P of O.Parameters loop
+               if not First then
+                  Append (Sig, "; ");
+               end if;
+               First := False;
+               Append (Sig,
+                       UML2Code.Casing.To_Snake_Case
+                         (To_String (P.Name)));
+               Append (Sig, " : ");
+               Append (Sig,
+                       To_Ada_Type_Name (To_String (P.Of_Type)));
+            end loop;
+         end;
+         Append (Sig, ")");
+      end if;
+
+      if Has_Ret then
+         Append (Sig, " return ");
+         Append (Sig, To_Ada_Type_Name (To_String (O.Return_Type)));
+      end if;
+      Append (Sig, " is");
+
+      Jintp.Append (Result, To_String (Sig));
+      Jintp.Append (Result, "   begin");
+      if Has_Ret then
+         Jintp.Append (Result,
+                       "      raise Program_Error with """
+                       & Name & " not implemented"";");
+      else
+         Jintp.Append (Result, "      null;");
+      end if;
+      Jintp.Append (Result, "   end " & Name & ";");
+      return Result;
+   end Operation_Body_Lines;
+
    --  ---- Dictionary construction ----
 
    function Property_Dictionary (P : UML_Model.Class.Property)
@@ -242,6 +302,46 @@ package body UML2Code.Controller is
       return D;
    end Property_Dictionary;
 
+   --  The body of a test procedure for one operation, as a list of
+   --  source lines. Procedures are called directly; functions have
+   --  their result assigned to a local. Both catch Program_Error
+   --  from the stub and report it as a pending-implementation pass.
+   function Operation_Test_Body_Lines (O : UML_Model.Class.Operation)
+     return Jintp.List
+   is
+      Result  : Jintp.List;
+      Name    : constant String :=
+        UML2Code.Casing.To_Ada_Case (To_String (O.Name));
+      Has_Ret : constant Boolean := Is_Valid (O.Return_Type.Name);
+   begin
+      Jintp.Append (Result, "      pragma Unreferenced (T);");
+      if Has_Ret then
+         Jintp.Append (Result,
+                       "      Result : "
+                       & To_Ada_Type_Name (To_String (O.Return_Type))
+                       & ";");
+      end if;
+      Jintp.Append (Result, "   begin");
+      Jintp.Append (Result, "      begin");
+      if Has_Ret then
+         Jintp.Append (Result,
+                       "         Result := " & Name & ";");
+      else
+         Jintp.Append (Result,
+                       "         " & Name & ";");
+      end if;
+      Jintp.Append (Result,
+                    "         Assert (True, """
+                    & To_String (O.Name) & " returned"");");
+      Jintp.Append (Result, "      exception");
+      Jintp.Append (Result, "         when Program_Error =>");
+      Jintp.Append (Result,
+                    "            Assert (True, """
+                    & To_String (O.Name) & " not yet implemented"");");
+      Jintp.Append (Result, "      end;");
+      return Result;
+   end Operation_Test_Body_Lines;
+
    function Operation_Dictionary (O : UML_Model.Class.Operation)
      return Jintp.Dictionary
    is
@@ -254,6 +354,9 @@ package body UML2Code.Controller is
                     UML_Model.Class.Visibility'Image (O.Visibility));
       Jintp.Insert (D, "stereotypes", Stereotype_List (O.Stereotypes));
       Jintp.Insert (D, "declaration", Operation_Declaration (O));
+      Jintp.Insert (D, "body_lines",  Operation_Body_Lines (O));
+      Jintp.Insert (D, "test_body_lines",
+                    Operation_Test_Body_Lines (O));
       Jintp.Insert (D, "has_parameters", not O.Parameters.Is_Empty);
       Jintp.Insert (D, "has_return", Is_Valid (O.Return_Type.Name));
       for P of O.Parameters loop
@@ -366,7 +469,7 @@ package body UML2Code.Controller is
       return D;
    end State_Machine_Dictionary;
 
-   --  ---- Rendering and walks ----
+   --  ---- Rendering ----
 
    function Render_One
      (Template_Path : String;
@@ -381,6 +484,8 @@ package body UML2Code.Controller is
          return Emit_Results.Err
            (Make_Error (No_Location, "template error: " & Template_Path));
    end Render_One;
+
+   --  ---- Walkers ----
 
    function Walk_Classes
      (Path : String;
@@ -445,86 +550,17 @@ package body UML2Code.Controller is
       return Emit_Results.Ok (Buf);
    end Walk_State_Machines;
 
-   --  ---- Test-starter walkers ----
-   --
-   --  Same element iteration as the code walkers, but rendering
-   --  the corresponding test template. Errors propagate the same
-   --  way.
-
-   function Walk_Class_Tests
-     (Path : String;
-      Env  : in out Jintp.Environment;
-      M    : Model) return Emit_Results.Result
-   is
-      Buf : Unbounded_String;
-   begin
-      for C of M.Classes loop
-         declare
-            R : constant Emit_Results.Result :=
-              Render_One (Path, Class_Dictionary (C, M.Relations), Env);
-         begin
-            if not R.Success then
-               return R;
-            end if;
-            Append (Buf, To_String (R.Output));
-         end;
-      end loop;
-      return Emit_Results.Ok (Buf);
-   end Walk_Class_Tests;
-
-   function Walk_Relation_Tests
-     (Path : String;
-      Env  : in out Jintp.Environment;
-      M    : Model) return Emit_Results.Result
-   is
-      Buf : Unbounded_String;
-   begin
-      for R of M.Relations loop
-         declare
-            Res : constant Emit_Results.Result :=
-              Render_One (Path, Relation_Dictionary (R), Env);
-         begin
-            if not Res.Success then
-               return Res;
-            end if;
-            Append (Buf, To_String (Res.Output));
-         end;
-      end loop;
-      return Emit_Results.Ok (Buf);
-   end Walk_Relation_Tests;
-
-   function Walk_State_Machine_Tests
-     (Path : String;
-      Env  : in out Jintp.Environment;
-      M    : Model) return Emit_Results.Result
-   is
-      Buf : Unbounded_String;
-   begin
-      for S of M.State_Machines loop
-         declare
-            R : constant Emit_Results.Result :=
-              Render_One (Path, State_Machine_Dictionary (S), Env);
-         begin
-            if not R.Success then
-               return R;
-            end if;
-            Append (Buf, To_String (R.Output));
-         end;
-      end loop;
-      return Emit_Results.Ok (Buf);
-   end Walk_State_Machine_Tests;
-
    --  Dispatch a single manifest entry to the appropriate walker.
-   --  Code_Walk selects the code walkers; otherwise test walkers.
+   --  The Section parameter selects code or test walkers.
    function Dispatch
-     (Kind      : String;
-      Path      : String;
-      Env       : in out Jintp.Environment;
-      M         : Model;
-      Code_Walk : Boolean) return Emit_Results.Result
+     (Section : String;
+      Kind    : String;
+      Path    : String;
+      Env     : in out Jintp.Environment;
+      M       : Model) return Emit_Results.Result
    is
    begin
-      if Code_Walk then
+      if Section = "code-spec" or else Section = "code-body" then
          if Kind = "class" then
             return Walk_Classes (Path, Env, M);
          elsif Kind = "relation" then
@@ -537,12 +573,13 @@ package body UML2Code.Controller is
                            "unknown element kind: " & Kind));
          end if;
       else
+         --  test-spec / test-body
          if Kind = "class" then
-            return Walk_Class_Tests (Path, Env, M);
+            return Walk_Classes (Path, Env, M);
          elsif Kind = "relation" then
-            return Walk_Relation_Tests (Path, Env, M);
+            return Walk_Relations (Path, Env, M);
          elsif Kind = "state_machine" then
-            return Walk_State_Machine_Tests (Path, Env, M);
+            return Walk_State_Machines (Path, Env, M);
          else
             return Emit_Results.Err
               (Make_Error (No_Location,
@@ -551,57 +588,87 @@ package body UML2Code.Controller is
       end if;
    end Dispatch;
 
-   function Emit_With_Set
-     (M        : Model;
-      Set_Dir  : String;
-      Manifest : Manifests.Manifest) return Pipeline_Results.Result
+   --  Render a whole section into Buf.
+   procedure Render_Section
+     (Section : String;
+      Entries : Manifests.Template_Entry_Vectors.Vector;
+      Set_Dir : String;
+      Env     : in out Jintp.Environment;
+      M       : Model;
+      Buf     : in out Unbounded_String;
+      Ok      : out Boolean;
+      Err     : out Source_Error)
    is
-      Env      : Jintp.Environment;
-      Code_Buf : Unbounded_String;
-      Test_Buf : Unbounded_String;
-      Entries  : constant Manifests.Template_Entry_Vectors.Vector :=
-        Manifests.Templates (Manifest);
-      Tests    : constant Manifests.Template_Entry_Vectors.Vector :=
-        Manifests.Test_Templates (Manifest);
    begin
-      Jintp.Configure (Env);
-      UML2Code.Filters.Register_All (Env);
-
-      --  Code templates.
+      Ok := True;
+      Err := Make_Error (No_Location, "");
       for E of Entries loop
          declare
             Kind : constant String := To_String (E.Element_Kind);
             Path : constant String :=
               Set_Dir & "/" & To_String (E.File_Name);
             R : constant Emit_Results.Result :=
-              Dispatch (Kind, Path, Env, M, Code_Walk => True);
+              Dispatch (Section, Kind, Path, Env, M);
          begin
             if not R.Success then
-               return Pipeline_Results.Err (R.Error);
+               Ok := False;
+               Err := R.Error;
+               return;
             end if;
-            Append (Code_Buf, To_String (R.Output));
+            Append (Buf, To_String (R.Output));
          end;
       end loop;
+   end Render_Section;
 
-      --  Test templates. Rendered into a separate buffer.
-      for E of Tests loop
-         declare
-            Kind : constant String := To_String (E.Element_Kind);
-            Path : constant String :=
-              Set_Dir & "/" & To_String (E.File_Name);
-            R : constant Emit_Results.Result :=
-              Dispatch (Kind, Path, Env, M, Code_Walk => False);
-         begin
-            if not R.Success then
-               return Pipeline_Results.Err (R.Error);
-            end if;
-            Append (Test_Buf, To_String (R.Output));
-         end;
-      end loop;
+   function Emit_With_Set
+     (M        : Model;
+      Set_Dir  : String;
+      Manifest : Manifests.Manifest) return Pipeline_Results.Result
+   is
+      Env       : Jintp.Environment;
+      Code_Spec : Unbounded_String;
+      Code_Body : Unbounded_String;
+      Test_Spec : Unbounded_String;
+      Test_Body : Unbounded_String;
+      Ok        : Boolean;
+      Err       : Source_Error;
+   begin
+      Jintp.Configure (Env);
+      UML2Code.Filters.Register_All (Env);
+
+      Render_Section ("code-spec",
+                      Manifests.Code_Spec_Templates (Manifest),
+                      Set_Dir, Env, M, Code_Spec, Ok, Err);
+      if not Ok then
+         return Pipeline_Results.Err (Err);
+      end if;
+
+      Render_Section ("code-body",
+                      Manifests.Code_Body_Templates (Manifest),
+                      Set_Dir, Env, M, Code_Body, Ok, Err);
+      if not Ok then
+         return Pipeline_Results.Err (Err);
+      end if;
+
+      Render_Section ("test-spec",
+                      Manifests.Test_Spec_Templates (Manifest),
+                      Set_Dir, Env, M, Test_Spec, Ok, Err);
+      if not Ok then
+         return Pipeline_Results.Err (Err);
+      end if;
+
+      Render_Section ("test-body",
+                      Manifests.Test_Body_Templates (Manifest),
+                      Set_Dir, Env, M, Test_Body, Ok, Err);
+      if not Ok then
+         return Pipeline_Results.Err (Err);
+      end if;
 
       return Pipeline_Results.Ok
-        ((Code  => Code_Buf,
-          Tests => Test_Buf));
+        ((Code_Spec => Code_Spec,
+          Code_Body => Code_Body,
+          Test_Spec => Test_Spec,
+          Test_Body => Test_Body));
    end Emit_With_Set;
 
    function Emit (M : Model) return Pipeline_Results.Result is

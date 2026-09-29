@@ -51,10 +51,14 @@ package body UML2Code.Manifests is
                elsif Key = "extension" then
                   M.Ext := To_Unbounded_String (Val);
                end if;
-            elsif Section = "emit" then
-               M.Entries.Append (Item);
-            elsif Section = "emit-tests" then
-               M.Tests.Append (Item);
+            elsif Section = "code-spec" then
+               M.Code_Spec.Append (Item);
+            elsif Section = "code-body" then
+               M.Code_Body.Append (Item);
+            elsif Section = "test-spec" then
+               M.Test_Spec.Append (Item);
+            elsif Section = "test-body" then
+               M.Test_Body.Append (Item);
             elsif Section = "context" then
                Append (M.Contexts, Key & "=" & Val & ASCII.LF);
             end if;
@@ -106,12 +110,14 @@ package body UML2Code.Manifests is
    function Language  (M : Manifest) return String is (To_String (M.Lang));
    function Extension (M : Manifest) return String is (To_String (M.Ext));
 
-   function Templates (M : Manifest) return Template_Entry_Vectors.Vector is
-     (M.Entries);
-
-   function Test_Templates (M : Manifest)
-     return Template_Entry_Vectors.Vector is
-     (M.Tests);
+   function Code_Spec_Templates (M : Manifest)
+     return Template_Entry_Vectors.Vector is (M.Code_Spec);
+   function Code_Body_Templates (M : Manifest)
+     return Template_Entry_Vectors.Vector is (M.Code_Body);
+   function Test_Spec_Templates (M : Manifest)
+     return Template_Entry_Vectors.Vector is (M.Test_Spec);
+   function Test_Body_Templates (M : Manifest)
+     return Template_Entry_Vectors.Vector is (M.Test_Body);
 
    function Context_Variables
      (M : Manifest; Element_Kind : String) return String
