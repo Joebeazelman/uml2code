@@ -3,7 +3,8 @@
 {% for s in stereotypes %}--  <<{{ s }}>>
 {% endfor %}package {{ name|ada }} is
 
-{% for line in vector_instantiation_lines %}{{ line }}
+{% for line in package_rename_lines %}{{ line }}
+{% endfor %}{% for line in vector_instantiation_lines %}{{ line }}
 {% endfor %}{{ type_opening }}
 {% for line in record_body_lines %}{{ line }}
 {% endfor %}   end record;

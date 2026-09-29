@@ -186,13 +186,51 @@ package body UML2Code.Controller is
                      "     (Index_Type   => Positive,");
                   Jintp.Append
                     (Result,
-                     "      Element_Type => " & Tgt & "_T);");
+                     "      Element_Type => " & Tgt & "_Pkg."
+                     & Tgt & "_T);");
                end if;
             end;
          end if;
       end loop;
       return Result;
    end Vector_Instantiation_Lines;
+
+   --  For each relation target, emit a package renames so the
+   --  record can qualify the type without the field name shadowing
+   --  the package name. Deduplicated.
+   function Package_Rename_Lines
+     (C         : UML_Model.Class.Class_Model;
+      Relations : Relation_Vector) return Jintp.List
+   is
+      Result : Jintp.List;
+      Seen   : Str_Vectors.Vector;
+   begin
+      for R of Relations loop
+         if R.Source = C.Name
+           and then R.Kind in Composition | Aggregation | Association
+         then
+            declare
+               Tgt     : constant String :=
+                 UML2Code.Casing.To_Ada_Case (To_String (R.Target));
+               Already : Boolean := False;
+            begin
+               for S of Seen loop
+                  if To_String (S) = Tgt then
+                     Already := True;
+                     exit;
+                  end if;
+               end loop;
+               if not Already then
+                  Seen.Append (To_Unbounded_String (Tgt));
+                  Jintp.Append
+                    (Result,
+                     "   package " & Tgt & "_Pkg renames " & Tgt & ";");
+               end if;
+            end;
+         end if;
+      end loop;
+      return Result;
+   end Package_Rename_Lines;
 
    function Relation_Field_Name (R : Relation) return String is
    begin
@@ -238,22 +276,22 @@ package body UML2Code.Controller is
                         Jintp.Append
                           (Result,
                            "      " & Field & " : "
-                           & Tgt & "_Vectors.Vector;");
+                           & Tgt & "_Pkg." & Tgt & "_Vectors.Vector;");
                      elsif Is_Nullable (Mult) then
                         Jintp.Append
                           (Result,
                            "      " & Field & " : access "
-                           & Tgt & "_T;");
+                           & Tgt & "_Pkg." & Tgt & "_T;");
                      elsif R.Kind = Composition then
                         Jintp.Append
                           (Result,
                            "      " & Field & " : "
-                           & Tgt & "_T;");
+                           & Tgt & "_Pkg." & Tgt & "_T;");
                      else
                         Jintp.Append
                           (Result,
                            "      " & Field & " : access "
-                           & Tgt & "_T;");
+                           & Tgt & "_Pkg." & Tgt & "_T;");
                      end if;
                   when others =>
                      null;
@@ -521,6 +559,8 @@ package body UML2Code.Controller is
       Jintp.Insert (D, "type_opening", Type_Opening (C, Relations));
       Jintp.Insert (D, "record_body_lines",
                     Record_Body_Lines (C, Relations));
+      Jintp.Insert (D, "package_rename_lines",
+                    Package_Rename_Lines (C, Relations));
       Jintp.Insert (D, "vector_instantiation_lines",
                     Vector_Instantiation_Lines (C, Relations));
       for P of C.Attributes loop
