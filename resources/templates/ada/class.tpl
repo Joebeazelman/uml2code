@@ -1,3 +1,5 @@
+{% for w in with_clauses %}{{ w }}
+{% endfor %}with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 {% for s in stereotypes %}--  <<{{ s }}>>
 {% endfor %}package {{ name|ada }} is
 
