@@ -29,7 +29,12 @@ package UML2Code.Manifests is
       Element_Type => Template_Entry);
    use Template_Entry_Vectors;
 
+   --  Code templates, from the [emit] section.
    function Templates (M : Manifest) return Template_Entry_Vectors.Vector;
+
+   --  Test templates, from the [emit-tests] section. May be empty.
+   function Test_Templates (M : Manifest)
+     return Template_Entry_Vectors.Vector;
 
    function Context_Variables
      (M : Manifest; Element_Kind : String) return String;
@@ -48,6 +53,7 @@ private
       Lang     : Unbounded_String;
       Ext      : Unbounded_String;
       Entries  : Template_Entry_Vectors.Vector;
+      Tests    : Template_Entry_Vectors.Vector;
       Contexts : Unbounded_String;
    end record;
 

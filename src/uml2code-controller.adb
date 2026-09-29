@@ -34,7 +34,6 @@ package body UML2Code.Controller is
       return Result;
    end Stereotype_List;
 
-   --  Map a UML type name to an Ada type legal as a record component.
    function To_Ada_Type_Name (Name : String) return String is
    begin
       if Name = "String" or else Name = "string" then
@@ -277,11 +276,9 @@ package body UML2Code.Controller is
                     UML_Model.Class.Visibility'Image (C.Visibility));
       Jintp.Insert (D, "stereotypes", Stereotype_List (C.Stereotypes));
       Jintp.Insert (D, "derives_from", Derives_From (C, Relations));
-      Jintp.Insert (D, "with_clauses",
-                    With_Clauses (C, Relations));
+      Jintp.Insert (D, "with_clauses", With_Clauses (C, Relations));
       Jintp.Insert (D, "type_opening", Type_Opening (C, Relations));
-      Jintp.Insert (D, "record_body_lines",
-                    Record_Body_Lines (C));
+      Jintp.Insert (D, "record_body_lines", Record_Body_Lines (C));
       for P of C.Attributes loop
          Jintp.Append (Attrs, Property_Dictionary (P));
       end loop;
@@ -448,55 +445,172 @@ package body UML2Code.Controller is
       return Emit_Results.Ok (Buf);
    end Walk_State_Machines;
 
-   function Emit_With_Set
-     (M        : Model;
-      Set_Dir  : String;
-      Manifest : Manifests.Manifest) return Emit_Results.Result
+   --  ---- Test-starter walkers ----
+   --
+   --  Same element iteration as the code walkers, but rendering
+   --  the corresponding test template. Errors propagate the same
+   --  way.
+
+   function Walk_Class_Tests
+     (Path : String;
+      Env  : in out Jintp.Environment;
+      M    : Model) return Emit_Results.Result
    is
-      Env     : Jintp.Environment;
-      Buf     : Unbounded_String;
-      Entries : constant Manifests.Template_Entry_Vectors.Vector :=
-        Manifests.Templates (Manifest);
+      Buf : Unbounded_String;
    begin
-      Jintp.Configure (Env);
-      UML2Code.Filters.Register_All (Env);
-
-      for E of Entries loop
+      for C of M.Classes loop
          declare
-            Kind : constant String := To_String (E.Element_Kind);
-            Path : constant String :=
-              Set_Dir & "/" & To_String (E.File_Name);
-            R : Emit_Results.Result;
+            R : constant Emit_Results.Result :=
+              Render_One (Path, Class_Dictionary (C, M.Relations), Env);
          begin
-            if Kind = "class" then
-               R := Walk_Classes (Path, Env, M);
-            elsif Kind = "relation" then
-               R := Walk_Relations (Path, Env, M);
-            elsif Kind = "state_machine" then
-               R := Walk_State_Machines (Path, Env, M);
-            else
-               R := Emit_Results.Err
-                 (Make_Error (No_Location,
-                              "unknown element kind: " & Kind));
-            end if;
-
             if not R.Success then
                return R;
             end if;
             Append (Buf, To_String (R.Output));
          end;
       end loop;
-
       return Emit_Results.Ok (Buf);
+   end Walk_Class_Tests;
+
+   function Walk_Relation_Tests
+     (Path : String;
+      Env  : in out Jintp.Environment;
+      M    : Model) return Emit_Results.Result
+   is
+      Buf : Unbounded_String;
+   begin
+      for R of M.Relations loop
+         declare
+            Res : constant Emit_Results.Result :=
+              Render_One (Path, Relation_Dictionary (R), Env);
+         begin
+            if not Res.Success then
+               return Res;
+            end if;
+            Append (Buf, To_String (Res.Output));
+         end;
+      end loop;
+      return Emit_Results.Ok (Buf);
+   end Walk_Relation_Tests;
+
+   function Walk_State_Machine_Tests
+     (Path : String;
+      Env  : in out Jintp.Environment;
+      M    : Model) return Emit_Results.Result
+   is
+      Buf : Unbounded_String;
+   begin
+      for S of M.State_Machines loop
+         declare
+            R : constant Emit_Results.Result :=
+              Render_One (Path, State_Machine_Dictionary (S), Env);
+         begin
+            if not R.Success then
+               return R;
+            end if;
+            Append (Buf, To_String (R.Output));
+         end;
+      end loop;
+      return Emit_Results.Ok (Buf);
+   end Walk_State_Machine_Tests;
+
+   --  Dispatch a single manifest entry to the appropriate walker.
+   --  Code_Walk selects the code walkers; otherwise test walkers.
+   function Dispatch
+     (Kind      : String;
+      Path      : String;
+      Env       : in out Jintp.Environment;
+      M         : Model;
+      Code_Walk : Boolean) return Emit_Results.Result
+   is
+   begin
+      if Code_Walk then
+         if Kind = "class" then
+            return Walk_Classes (Path, Env, M);
+         elsif Kind = "relation" then
+            return Walk_Relations (Path, Env, M);
+         elsif Kind = "state_machine" then
+            return Walk_State_Machines (Path, Env, M);
+         else
+            return Emit_Results.Err
+              (Make_Error (No_Location,
+                           "unknown element kind: " & Kind));
+         end if;
+      else
+         if Kind = "class" then
+            return Walk_Class_Tests (Path, Env, M);
+         elsif Kind = "relation" then
+            return Walk_Relation_Tests (Path, Env, M);
+         elsif Kind = "state_machine" then
+            return Walk_State_Machine_Tests (Path, Env, M);
+         else
+            return Emit_Results.Err
+              (Make_Error (No_Location,
+                           "unknown test element kind: " & Kind));
+         end if;
+      end if;
+   end Dispatch;
+
+   function Emit_With_Set
+     (M        : Model;
+      Set_Dir  : String;
+      Manifest : Manifests.Manifest) return Pipeline_Results.Result
+   is
+      Env      : Jintp.Environment;
+      Code_Buf : Unbounded_String;
+      Test_Buf : Unbounded_String;
+      Entries  : constant Manifests.Template_Entry_Vectors.Vector :=
+        Manifests.Templates (Manifest);
+      Tests    : constant Manifests.Template_Entry_Vectors.Vector :=
+        Manifests.Test_Templates (Manifest);
+   begin
+      Jintp.Configure (Env);
+      UML2Code.Filters.Register_All (Env);
+
+      --  Code templates.
+      for E of Entries loop
+         declare
+            Kind : constant String := To_String (E.Element_Kind);
+            Path : constant String :=
+              Set_Dir & "/" & To_String (E.File_Name);
+            R : constant Emit_Results.Result :=
+              Dispatch (Kind, Path, Env, M, Code_Walk => True);
+         begin
+            if not R.Success then
+               return Pipeline_Results.Err (R.Error);
+            end if;
+            Append (Code_Buf, To_String (R.Output));
+         end;
+      end loop;
+
+      --  Test templates. Rendered into a separate buffer.
+      for E of Tests loop
+         declare
+            Kind : constant String := To_String (E.Element_Kind);
+            Path : constant String :=
+              Set_Dir & "/" & To_String (E.File_Name);
+            R : constant Emit_Results.Result :=
+              Dispatch (Kind, Path, Env, M, Code_Walk => False);
+         begin
+            if not R.Success then
+               return Pipeline_Results.Err (R.Error);
+            end if;
+            Append (Test_Buf, To_String (R.Output));
+         end;
+      end loop;
+
+      return Pipeline_Results.Ok
+        ((Code  => Code_Buf,
+          Tests => Test_Buf));
    end Emit_With_Set;
 
-   function Emit (M : Model) return Emit_Results.Result is
+   function Emit (M : Model) return Pipeline_Results.Result is
       Root_Res  : constant Paths.Search_Result := Paths.Find_Templates_Root;
       Preferred : constant String :=
         Ada.Environment_Variables.Value ("UML2CODE_TEMPLATE_SET", "");
    begin
       if not Root_Res.Success then
-         return Emit_Results.Err (Root_Res.Error);
+         return Pipeline_Results.Err (Root_Res.Error);
       end if;
 
       declare
@@ -506,7 +620,7 @@ package body UML2Code.Controller is
          Chosen : Unbounded_String := Null_Unbounded_String;
       begin
          if Sets.Is_Empty then
-            return Emit_Results.Err
+            return Pipeline_Results.Err
               (Make_Error (No_Location,
                            "no template sets found in " & Root));
          end if;
@@ -519,7 +633,7 @@ package body UML2Code.Controller is
                end if;
             end loop;
             if Length (Chosen) = 0 then
-               return Emit_Results.Err
+               return Pipeline_Results.Err
                  (Make_Error (No_Location,
                               "template set not found: " & Preferred));
             end if;
@@ -534,7 +648,7 @@ package body UML2Code.Controller is
               Manifests.Load (Set_Dir);
          begin
             if not Load_Res.Success then
-               return Emit_Results.Err (Load_Res.Error);
+               return Pipeline_Results.Err (Load_Res.Error);
             end if;
 
             return Emit_With_Set (M, Set_Dir, Load_Res.Value);

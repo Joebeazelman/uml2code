@@ -5,11 +5,6 @@ with GNAT.OS_Lib;
 
 package body UML2Code.Manifests is
 
-   --  Ada.Directories and Ada.Text_IO both re-export Name_Error from
-   --  Ada.IO_Exceptions. Two use clauses would hide the identifier,
-   --  so only Ada.Directories is use'd and Text_IO names are written
-   --  with their package prefix.
-
    use Ada.Directories;
 
    Separator : constant Character := GNAT.OS_Lib.Directory_Separator;
@@ -42,8 +37,11 @@ package body UML2Code.Manifests is
          end if;
 
          declare
-            Key : constant String := Trim (T (T'First .. Eq - 1));
-            Val : constant String := Trim (T (Eq + 1 .. T'Last));
+            Key  : constant String := Trim (T (T'First .. Eq - 1));
+            Val  : constant String := Trim (T (Eq + 1 .. T'Last));
+            Item : constant Template_Entry :=
+              (Element_Kind => To_Unbounded_String (Key),
+               File_Name    => To_Unbounded_String (Val));
          begin
             if Section = "set" then
                if Key = "name" then
@@ -54,9 +52,9 @@ package body UML2Code.Manifests is
                   M.Ext := To_Unbounded_String (Val);
                end if;
             elsif Section = "emit" then
-               M.Entries.Append
-                 ((Element_Kind => To_Unbounded_String (Key),
-                   File_Name    => To_Unbounded_String (Val)));
+               M.Entries.Append (Item);
+            elsif Section = "emit-tests" then
+               M.Tests.Append (Item);
             elsif Section = "context" then
                Append (M.Contexts, Key & "=" & Val & ASCII.LF);
             end if;
@@ -111,6 +109,10 @@ package body UML2Code.Manifests is
    function Templates (M : Manifest) return Template_Entry_Vectors.Vector is
      (M.Entries);
 
+   function Test_Templates (M : Manifest)
+     return Template_Entry_Vectors.Vector is
+     (M.Tests);
+
    function Context_Variables
      (M : Manifest; Element_Kind : String) return String
    is
@@ -137,33 +139,27 @@ package body UML2Code.Manifests is
       return "";
    end Context_Variables;
 
-   Dir_Only : constant Ada.Directories.Filter_Type :=
-     (Ordinary_File => False,
-      Directory     => True,
-      Special_File  => False);
-
    function List_Sets (Root : String) return String_Vectors.Vector is
       Result : String_Vectors.Vector;
-      Srch   : Ada.Directories.Search_Type;
-      Ent    : Ada.Directories.Directory_Entry_Type;
+      Srch   : Search_Type;
+      Ent    : Directory_Entry_Type;
    begin
-      Ada.Directories.Start_Search (Srch, Root, "", Dir_Only);
-      while Ada.Directories.More_Entries (Srch) loop
-         Ada.Directories.Get_Next_Entry (Srch, Ent);
+      Start_Search (Srch, Root, "", (Directory => True, others => False));
+      while More_Entries (Srch) loop
+         Get_Next_Entry (Srch, Ent);
          declare
-            Name : constant String := Ada.Directories.Simple_Name (Ent);
+            Name : constant String := Simple_Name (Ent);
             Sub  : constant String :=
-              Ada.Directories.Full_Name (Ent)
-              & (1 => Separator) & "manifest.ini";
+              Full_Name (Ent) & (1 => Separator) & "manifest.ini";
          begin
             if Name /= "." and then Name /= ".."
-              and then Ada.Directories.Exists (Sub)
+              and then Exists (Sub)
             then
                Result.Append (To_Unbounded_String (Name));
             end if;
          end;
       end loop;
-      Ada.Directories.End_Search (Srch);
+      End_Search (Srch);
       return Result;
    end List_Sets;
 
