@@ -1,0 +1,14 @@
+# Alire build state
+alire/
+config/
+
+# GPRbuild output
+obj/
+lib/
+bin/
+*.o
+*.ali
+
+# Test executables
+tests/obj/
+tests/lib/
