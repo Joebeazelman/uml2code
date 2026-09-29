@@ -1,3 +1,4 @@
+with Ada.Environment_Variables;
 with Ada.Strings.Unbounded;   use Ada.Strings.Unbounded;
 with Jintp;
 with UML2Code.Filters;
@@ -258,16 +259,19 @@ package body UML2Code.Controller is
    --  ---- Public entry point ----
 
    function Emit (M : Model) return Emit_Results.Result is
-      Root_Res : constant Paths.Search_Result := Paths.Find_Templates_Root;
+      Root_Res  : constant Paths.Search_Result := Paths.Find_Templates_Root;
+      Preferred : constant String :=
+        Ada.Environment_Variables.Value ("UML2CODE_TEMPLATE_SET", "");
    begin
       if not Root_Res.Success then
          return Emit_Results.Err (Root_Res.Error);
       end if;
 
       declare
-         Root : constant String := To_String (Root_Res.Root);
-         Sets : constant Manifests.String_Vectors.Vector :=
+         Root   : constant String := To_String (Root_Res.Root);
+         Sets   : constant Manifests.String_Vectors.Vector :=
            Manifests.List_Sets (Root);
+         Chosen : Unbounded_String := Null_Unbounded_String;
       begin
          if Sets.Is_Empty then
             return Emit_Results.Err
@@ -275,8 +279,24 @@ package body UML2Code.Controller is
                            "no template sets found in " & Root));
          end if;
 
+         if Preferred'Length > 0 then
+            for S of Sets loop
+               if To_String (S) = Preferred then
+                  Chosen := S;
+                  exit;
+               end if;
+            end loop;
+            if Length (Chosen) = 0 then
+               return Emit_Results.Err
+                 (Make_Error (No_Location,
+                              "template set not found: " & Preferred));
+            end if;
+         else
+            Chosen := Sets.Element (1);
+         end if;
+
          declare
-            Set_Name : constant String := To_String (Sets.Element (1));
+            Set_Name : constant String := To_String (Chosen);
             Set_Dir  : constant String := Root & "/" & Set_Name;
             Load_Res : constant Manifests.Load_Result :=
               Manifests.Load (Set_Dir);
