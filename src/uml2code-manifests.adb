@@ -1,10 +1,18 @@
 with Ada.Directories;
 with Ada.Text_IO;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
+with GNAT.OS_Lib;
 
 package body UML2Code.Manifests is
 
-   use Ada.Text_IO;
+   --  Ada.Directories and Ada.Text_IO both re-export Name_Error from
+   --  Ada.IO_Exceptions. Two use clauses would hide the identifier,
+   --  so only Ada.Directories is use'd and Text_IO names are written
+   --  with their package prefix.
+
+   use Ada.Directories;
+
+   Separator : constant Character := GNAT.OS_Lib.Directory_Separator;
 
    function Trim (S : String) return String is
      (Ada.Strings.Fixed.Trim (S, Ada.Strings.Both));
@@ -58,19 +66,19 @@ package body UML2Code.Manifests is
 
    function Load (Dir : String) return Load_Result is
       Path : constant String :=
-        Dir & (1 => Ada.Directories.Directory_Separator) & "manifest.ini";
-      File : File_Type;
+        Dir & (1 => Separator) & "manifest.ini";
+      File : Ada.Text_IO.File_Type;
       M    : Manifest;
       Sect : Unbounded_String;
       Ln   : Positive := 1;
    begin
-      Open (File, In_File, Path);
-      while not End_Of_File (File) loop
+      Ada.Text_IO.Open (File, Ada.Text_IO.In_File, Path);
+      while not Ada.Text_IO.End_Of_File (File) loop
          begin
-            Parse_Line (Ln, Get_Line (File), Sect, M);
+            Parse_Line (Ln, Ada.Text_IO.Get_Line (File), Sect, M);
          exception
             when Constraint_Error =>
-               Close (File);
+               Ada.Text_IO.Close (File);
                return (Success => False,
                        Error   => Make_Error
                          (No_Location,
@@ -79,7 +87,7 @@ package body UML2Code.Manifests is
          end;
          Ln := Ln + 1;
       end loop;
-      Close (File);
+      Ada.Text_IO.Close (File);
 
       if Length (M.Name) = 0 then
          return (Success => False,
@@ -90,7 +98,7 @@ package body UML2Code.Manifests is
       return (Success => True, Value => M);
 
    exception
-      when Name_Error =>
+      when Ada.Text_IO.Name_Error =>
          return (Success => False,
                  Error   => Make_Error
                    (No_Location, "manifest not found: " & Path));
@@ -112,7 +120,8 @@ package body UML2Code.Manifests is
    begin
       while Pos <= S'Length loop
          declare
-            Eol  : constant Natural := Index (S (Pos .. S'Length), (1 => ASCII.LF));
+            Eol  : constant Natural :=
+              Index (S (Pos .. S'Length), (1 => ASCII.LF));
             Stop : constant Natural :=
               (if Eol = 0 then S'Length else Pos + Eol - 2);
          begin
@@ -128,20 +137,24 @@ package body UML2Code.Manifests is
       return "";
    end Context_Variables;
 
+   Dir_Only : constant Ada.Directories.Filter_Type :=
+     (Ordinary_File => False,
+      Directory     => True,
+      Special_File  => False);
+
    function List_Sets (Root : String) return String_Vectors.Vector is
       Result : String_Vectors.Vector;
       Srch   : Ada.Directories.Search_Type;
       Ent    : Ada.Directories.Directory_Entry_Type;
    begin
-      Ada.Directories.Start_Search
-        (Srch, Root, "", (Directory => True, others => False));
+      Ada.Directories.Start_Search (Srch, Root, "", Dir_Only);
       while Ada.Directories.More_Entries (Srch) loop
          Ada.Directories.Get_Next_Entry (Srch, Ent);
          declare
             Name : constant String := Ada.Directories.Simple_Name (Ent);
             Sub  : constant String :=
               Ada.Directories.Full_Name (Ent)
-              & (1 => Ada.Directories.Directory_Separator) & "manifest.ini";
+              & (1 => Separator) & "manifest.ini";
          begin
             if Name /= "." and then Name /= ".."
               and then Ada.Directories.Exists (Sub)

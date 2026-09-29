@@ -14,3 +14,11 @@ jintp = "*"
 
 [[pins]]
 uml_model = { path='../uml_model' }
+
+
+[[depends-on]]
+aunit = "*"
+
+[[actions]]
+type = "test"
+command = ["sh", "-c", "alr exec -- gprbuild -P tests/uml2code_tests.gpr -p && ./tests/obj/tests"]
