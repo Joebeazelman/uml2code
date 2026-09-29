@@ -87,6 +87,9 @@ package body UML2Code.Controller is
       return False;
    end Is_Base;
 
+   function Is_Nullable (M : Multiplicity) return Boolean is
+     (M.Lower = 0 and then M.Upper = 1);
+
    function With_Clauses
      (C         : UML_Model.Class.Class_Model;
       Relations : Relation_Vector) return Jintp.List
@@ -117,6 +120,9 @@ package body UML2Code.Controller is
                when Composition | Aggregation | Association =>
                   Add_If_New (UML2Code.Casing.To_Ada_Case
                               (To_String (R.Target)));
+                  if Is_Unbounded (R.Target_Multiplicity) then
+                     Add_If_New ("Ada.Containers.Vectors");
+                  end if;
                when others =>
                   null;
             end case;
@@ -143,6 +149,50 @@ package body UML2Code.Controller is
          return "type " & Name & "_T is record";
       end if;
    end Type_Opening;
+
+   --  Instantiate a container package for each multi-valued target
+   --  relation of C. Duplicate targets share one instantiation.
+   function Vector_Instantiation_Lines
+     (C         : UML_Model.Class.Class_Model;
+      Relations : Relation_Vector) return Jintp.List
+   is
+      Result : Jintp.List;
+      Seen   : Str_Vectors.Vector;
+   begin
+      for R of Relations loop
+         if R.Source = C.Name
+           and then R.Kind in Composition | Aggregation | Association
+           and then Is_Unbounded (R.Target_Multiplicity)
+         then
+            declare
+               Tgt     : constant String :=
+                 UML2Code.Casing.To_Ada_Case (To_String (R.Target));
+               Already : Boolean := False;
+            begin
+               for S of Seen loop
+                  if To_String (S) = Tgt then
+                     Already := True;
+                     exit;
+                  end if;
+               end loop;
+               if not Already then
+                  Seen.Append (To_Unbounded_String (Tgt));
+                  Jintp.Append
+                    (Result,
+                     "   package " & Tgt
+                     & "_Vectors is new Ada.Containers.Vectors");
+                  Jintp.Append
+                    (Result,
+                     "     (Index_Type   => Positive,");
+                  Jintp.Append
+                    (Result,
+                     "      Element_Type => " & Tgt & "_T);");
+               end if;
+            end;
+         end if;
+      end loop;
+      return Result;
+   end Vector_Instantiation_Lines;
 
    function Relation_Field_Name (R : Relation) return String is
    begin
@@ -175,24 +225,40 @@ package body UML2Code.Controller is
 
       for R of Relations loop
          if R.Source = C.Name then
-            case R.Kind is
-               when Composition =>
-                  Any := True;
-                  Jintp.Append
-                    (Result,
-                     "      " & Relation_Field_Name (R) & " : "
-                     & UML2Code.Casing.To_Ada_Case (To_String (R.Target))
-                     & "_T;");
-               when Aggregation | Association =>
-                  Any := True;
-                  Jintp.Append
-                    (Result,
-                     "      " & Relation_Field_Name (R) & " : access "
-                     & UML2Code.Casing.To_Ada_Case (To_String (R.Target))
-                     & "_T;");
-               when others =>
-                  null;
-            end case;
+            declare
+               Field : constant String := Relation_Field_Name (R);
+               Tgt   : constant String :=
+                 UML2Code.Casing.To_Ada_Case (To_String (R.Target));
+               Mult  : constant Multiplicity := R.Target_Multiplicity;
+            begin
+               case R.Kind is
+                  when Composition | Aggregation | Association =>
+                     Any := True;
+                     if Is_Unbounded (Mult) then
+                        Jintp.Append
+                          (Result,
+                           "      " & Field & " : "
+                           & Tgt & "_Vectors.Vector;");
+                     elsif Is_Nullable (Mult) then
+                        Jintp.Append
+                          (Result,
+                           "      " & Field & " : access "
+                           & Tgt & "_T;");
+                     elsif R.Kind = Composition then
+                        Jintp.Append
+                          (Result,
+                           "      " & Field & " : "
+                           & Tgt & "_T;");
+                     else
+                        Jintp.Append
+                          (Result,
+                           "      " & Field & " : access "
+                           & Tgt & "_T;");
+                     end if;
+                  when others =>
+                     null;
+               end case;
+            end;
          end if;
       end loop;
 
@@ -455,6 +521,8 @@ package body UML2Code.Controller is
       Jintp.Insert (D, "type_opening", Type_Opening (C, Relations));
       Jintp.Insert (D, "record_body_lines",
                     Record_Body_Lines (C, Relations));
+      Jintp.Insert (D, "vector_instantiation_lines",
+                    Vector_Instantiation_Lines (C, Relations));
       for P of C.Attributes loop
          Jintp.Append (Attrs, Property_Dictionary (P));
       end loop;
