@@ -102,6 +102,57 @@ package body UML2Code.Controller is
       return D;
    end Property_Dictionary;
 
+   --  Render an operation as a single Ada subprogram declaration
+   --  string. The template places this verbatim.
+   function Operation_Declaration (O : UML_Model.Class.Operation)
+     return String
+   is
+      Result    : Unbounded_String;
+      Has_Ret   : constant Boolean :=
+        Is_Valid (O.Return_Type.Name);
+      Has_Params : constant Boolean := not O.Parameters.Is_Empty;
+   begin
+      if Has_Ret then
+         Append (Result, "function ");
+      else
+         Append (Result, "procedure ");
+      end if;
+      Append (Result,
+              UML2Code.Casing.To_Ada_Case (To_String (O.Name)));
+
+      if Has_Params then
+         Append (Result, " (");
+         declare
+            First : Boolean := True;
+         begin
+            for P of O.Parameters loop
+               if not First then
+                  Append (Result, "; ");
+               end if;
+               First := False;
+               Append (Result,
+                       UML2Code.Casing.To_Snake_Case
+                         (To_String (P.Name)));
+               Append (Result, " : ");
+               Append (Result,
+                       UML2Code.Casing.To_Ada_Case
+                         (To_String (P.Of_Type)));
+            end loop;
+         end;
+         Append (Result, ")");
+      end if;
+
+      if Has_Ret then
+         Append (Result, " return ");
+         Append (Result,
+                 UML2Code.Casing.To_Ada_Case
+                   (To_String (O.Return_Type)));
+      end if;
+
+      Append (Result, ";");
+      return To_String (Result);
+   end Operation_Declaration;
+
    function Operation_Dictionary (O : UML_Model.Class.Operation)
      return Jintp.Dictionary
    is
@@ -113,6 +164,9 @@ package body UML2Code.Controller is
       Jintp.Insert (D, "visibility",
                     UML_Model.Class.Visibility'Image (O.Visibility));
       Jintp.Insert (D, "stereotypes", Stereotype_List (O.Stereotypes));
+      Jintp.Insert (D, "declaration", Operation_Declaration (O));
+      Jintp.Insert (D, "has_parameters", not O.Parameters.Is_Empty);
+      Jintp.Insert (D, "has_return", Is_Valid (O.Return_Type.Name));
       for P of O.Parameters loop
          Jintp.Append (Params, Property_Dictionary (P));
       end loop;
