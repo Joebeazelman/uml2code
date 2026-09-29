@@ -18,7 +18,8 @@ package body UML2Code.Controller is
    use UML_Model.Models;
    use UML_Model.Types;
 
-   --  ---- Dictionary construction ----
+   function Transition_Dictionary (T : UML_Model.State_Machine.Transition)
+     return Jintp.Dictionary;
 
    function Property_Dictionary (P : UML_Model.Class.Property)
      return Jintp.Dictionary
@@ -84,20 +85,6 @@ package body UML2Code.Controller is
       return D;
    end Relation_Dictionary;
 
-   function State_Dictionary (S : UML_Model.State_Machine.State)
-     return Jintp.Dictionary
-   is
-      D : Jintp.Dictionary;
-   begin
-      Jintp.Insert (D, "name",         To_String (S.Name));
-      Jintp.Insert (D, "kind",
-                    UML_Model.State_Machine.State_Kind'Image (S.Kind));
-      Jintp.Insert (D, "parent",       To_String (S.Parent));
-      Jintp.Insert (D, "entry_action", To_String (S.Entry_Action));
-      Jintp.Insert (D, "exit_action",  To_String (S.Exit_Action));
-      return D;
-   end State_Dictionary;
-
    function Transition_Dictionary (T : UML_Model.State_Machine.Transition)
      return Jintp.Dictionary
    is
@@ -111,6 +98,33 @@ package body UML2Code.Controller is
       return D;
    end Transition_Dictionary;
 
+   --  State dictionary now includes an "outgoing" list: every
+   --  transition whose Source matches this state's name.
+   function State_Dictionary
+     (S           : UML_Model.State_Machine.State;
+      Transitions : UML_Model.State_Machine.Transition_Vector)
+     return Jintp.Dictionary
+   is
+      D   : Jintp.Dictionary;
+      Outgoing : Jintp.List;
+   begin
+      Jintp.Insert (D, "name",         To_String (S.Name));
+      Jintp.Insert (D, "kind",
+                    UML_Model.State_Machine.State_Kind'Image (S.Kind));
+      Jintp.Insert (D, "parent",       To_String (S.Parent));
+      Jintp.Insert (D, "entry_action", To_String (S.Entry_Action));
+      Jintp.Insert (D, "exit_action",  To_String (S.Exit_Action));
+
+      for T of Transitions loop
+         if T.Source = S.Name then
+            Jintp.Append (Outgoing, Transition_Dictionary (T));
+         end if;
+      end loop;
+
+      Jintp.Insert (D, "outgoing", Outgoing);
+      return D;
+   end State_Dictionary;
+
    function State_Machine_Dictionary
      (M : UML_Model.State_Machine.State_Chart_Model) return Jintp.Dictionary
    is
@@ -121,7 +135,7 @@ package body UML2Code.Controller is
       Jintp.Insert (D, "name",    To_String (M.Name));
       Jintp.Insert (D, "initial", To_String (M.Initial));
       for S of M.States loop
-         Jintp.Append (St, State_Dictionary (S));
+         Jintp.Append (St, State_Dictionary (S, M.Transitions));
       end loop;
       for T of M.Transitions loop
          Jintp.Append (Tr, Transition_Dictionary (T));
@@ -146,8 +160,6 @@ package body UML2Code.Controller is
          return Emit_Results.Err
            (Make_Error (No_Location, "template error: " & Template_Path));
    end Render_One;
-
-   --  ---- Per-kind walks ----
 
    function Walk_Classes
      (Path : String;
@@ -212,8 +224,6 @@ package body UML2Code.Controller is
       return Emit_Results.Ok (Buf);
    end Walk_State_Machines;
 
-   --  ---- Manifest-driven dispatch ----
-
    function Emit_With_Set
      (M        : Model;
       Set_Dir  : String;
@@ -255,8 +265,6 @@ package body UML2Code.Controller is
 
       return Emit_Results.Ok (Buf);
    end Emit_With_Set;
-
-   --  ---- Public entry point ----
 
    function Emit (M : Model) return Emit_Results.Result is
       Root_Res  : constant Paths.Search_Result := Paths.Find_Templates_Root;
