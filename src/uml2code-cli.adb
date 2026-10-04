@@ -1,12 +1,8 @@
 with Ada.Command_Line;
 with Ada.Environment_Variables;
 with Ada.Text_IO;
-with Ada.Strings.Unbounded;    use Ada.Strings.Unbounded;
-with Ada.Strings.Fixed;        use Ada.Strings.Fixed;
-with UML2Code;
 with UML2Code.Paths;
 with UML2Code.Manifests;
-with UML2Code.CLI.Colors;      use UML2Code.CLI.Colors;
 with UML2Code.CLI.Definitions; use UML2Code.CLI.Definitions;
 with UML2Code.CLI.Help;
 with UML2Code.CLI.Settings;
@@ -28,14 +24,12 @@ package body UML2Code.CLI is
       return To_String (Buf);
    end Read_File;
 
-   function Starts_With (S, Prefix : String) return Boolean is
-     (S'Length >= Prefix'Length
-      and then S (S'First .. S'First + Prefix'Length - 1) = Prefix);
+   function Starts_With (S, Prefix : String) return Boolean
+   is (S'Length >= Prefix'Length
+       and then S (S'First .. S'First + Prefix'Length - 1) = Prefix);
 
-   function Value_Of (S : String; After : String) return String is
-      --  Extract the value from "--opt=value": everything after the
-      --  "=" in S, assuming S starts with After & "=".
-     (S (S'First + After'Length + 1 .. S'Last));
+   function Value_Of (S : String; After : String) return String
+   is (S (S'First + After'Length + 1 .. S'Last));
 
    function Handle_List return Integer is
       R : constant UML2Code.Paths.Search_Result :=
@@ -65,8 +59,8 @@ package body UML2Code.CLI is
       end if;
 
       declare
-         Input    : constant String := Ada.Command_Line.Argument (2);
-         Contents : constant String := Read_File (Input);
+         Input     : constant String := Ada.Command_Line.Argument (2);
+         Contents  : constant String := Read_File (Input);
          Parse_Res : constant PlantUML_Parser.Parse_Results.Result :=
            PlantUML_Parser.Parse (Contents);
       begin
@@ -83,9 +77,6 @@ package body UML2Code.CLI is
          return 1;
    end Handle_Check;
 
-   --  Render the "dump" template set and print the four buffers to
-   --  stdout. The dump set produces reference material, not code, so
-   --  it isn't split per package.
    function Handle_Dump return Integer is
       Count : constant Natural := Ada.Command_Line.Argument_Count;
    begin
@@ -95,8 +86,8 @@ package body UML2Code.CLI is
       end if;
 
       declare
-         Input    : constant String := Ada.Command_Line.Argument (2);
-         Contents : constant String := Read_File (Input);
+         Input     : constant String := Ada.Command_Line.Argument (2);
+         Contents  : constant String := Read_File (Input);
          Parse_Res : constant PlantUML_Parser.Parse_Results.Result :=
            PlantUML_Parser.Parse (Contents);
       begin
@@ -107,31 +98,41 @@ package body UML2Code.CLI is
 
          Ada.Environment_Variables.Set ("UML2CODE_TEMPLATE_SET", "dump");
 
+         -- Correctly use Settings_Result instead of Result
          declare
-            Settings : constant UML2Code.Settings :=
-              UML2Code.CLI.Settings.Load;
-            Gen_Res  : constant UML2Code.Generate_Results.Result :=
-              UML2Code.Generate (Parse_Res.Output, Settings);
+            Settings_Res : constant UML2Code.CLI.Settings.Settings_Result :=
+              UML2Code.CLI.Settings.Load ("");
          begin
             Ada.Environment_Variables.Clear ("UML2CODE_TEMPLATE_SET");
 
-            if not Gen_Res.Success then
-               Help.Print_Error (To_String (Gen_Res.Error));
+            if not Settings_Res.Success then
+               Help.Print_Error (To_String (Settings_Res.Error));
                return 1;
             end if;
 
-            if Length (Gen_Res.Output.Code_Spec) > 0 then
-               Ada.Text_IO.Put (To_String (Gen_Res.Output.Code_Spec));
-            end if;
-            if Length (Gen_Res.Output.Code_Body) > 0 then
-               Ada.Text_IO.Put (To_String (Gen_Res.Output.Code_Body));
-            end if;
-            if Length (Gen_Res.Output.Test_Spec) > 0 then
-               Ada.Text_IO.Put (To_String (Gen_Res.Output.Test_Spec));
-            end if;
-            if Length (Gen_Res.Output.Test_Body) > 0 then
-               Ada.Text_IO.Put (To_String (Gen_Res.Output.Test_Body));
-            end if;
+            declare
+               Settings : constant UML2Code.Settings := Settings_Res.Output;
+               Gen_Res  : constant UML2Code.Generate_Results.Result :=
+                 UML2Code.Generate (Parse_Res.Output, Settings);
+            begin
+               if not Gen_Res.Success then
+                  Help.Print_Error (To_String (Gen_Res.Error));
+                  return 1;
+               end if;
+
+               if Length (Gen_Res.Output.Code_Spec) > 0 then
+                  Ada.Text_IO.Put (To_String (Gen_Res.Output.Code_Spec));
+               end if;
+               if Length (Gen_Res.Output.Code_Body) > 0 then
+                  Ada.Text_IO.Put (To_String (Gen_Res.Output.Code_Body));
+               end if;
+               if Length (Gen_Res.Output.Test_Spec) > 0 then
+                  Ada.Text_IO.Put (To_String (Gen_Res.Output.Test_Spec));
+               end if;
+               if Length (Gen_Res.Output.Test_Body) > 0 then
+                  Ada.Text_IO.Put (To_String (Gen_Res.Output.Test_Body));
+               end if;
+            end;
          end;
          return 0;
       end;
@@ -142,9 +143,9 @@ package body UML2Code.CLI is
    end Handle_Dump;
 
    function Handle_Generate return Integer is
-      Input      : Unbounded_String;
-      Target_Set : Unbounded_String;
-      Output_Dir : Unbounded_String := To_Unbounded_String ("src");
+      Input            : Unbounded_String;
+      Target_Set       : Unbounded_String;
+      Output_Dir       : Unbounded_String := To_Unbounded_String ("src");
       Dry_Run          : Boolean := False;
       Author_Override  : Unbounded_String;
       Company_Override : Unbounded_String;
@@ -168,8 +169,7 @@ package body UML2Code.CLI is
                   return 1;
                end if;
             elsif Starts_With (Arg, "--target=") then
-               Target_Set :=
-                 To_Unbounded_String (Value_Of (Arg, "--target"));
+               Target_Set := To_Unbounded_String (Value_Of (Arg, "--target"));
                I := I + 1;
             elsif Arg = "-o" or else Arg = "--output" then
                if I + 1 <= Count then
@@ -181,8 +181,7 @@ package body UML2Code.CLI is
                   return 1;
                end if;
             elsif Starts_With (Arg, "--output=") then
-               Output_Dir :=
-                 To_Unbounded_String (Value_Of (Arg, "--output"));
+               Output_Dir := To_Unbounded_String (Value_Of (Arg, "--output"));
                I := I + 1;
             elsif Arg = "-a" or else Arg = "--author" then
                if I + 1 <= Count then
@@ -214,11 +213,9 @@ package body UML2Code.CLI is
                Help.Print_Command_Help ("generate");
                return 0;
             elsif Arg'Length > 0 and then Arg (Arg'First) = '-' then
-               Help.Print_Usage_Error
-                 ("generate", "unknown option: " & Arg);
+               Help.Print_Usage_Error ("generate", "unknown option: " & Arg);
                return 1;
             else
-               --  First non-option is INPUT.
                if Length (Input) = 0 then
                   Input := To_Unbounded_String (Arg);
                end if;
@@ -248,30 +245,41 @@ package body UML2Code.CLI is
                return 1;
             end if;
 
+            -- Correctly use Settings_Result instead of Result
             declare
-               S : UML2Code.Settings := UML2Code.CLI.Settings.Load;
-               Gen_Res : UML2Code.Generate_Results.Result;
+               Settings_Res : constant UML2Code.CLI.Settings.Settings_Result :=
+                 UML2Code.CLI.Settings.Load ("");
             begin
-               if Length (Author_Override) > 0 then
-                  S.Author := Author_Override;
-               end if;
-               if Length (Company_Override) > 0 then
-                  S.Company := Company_Override;
-               end if;
-
-               Gen_Res := UML2Code.Generate (Parse_Res.Output, S);
-               if not Gen_Res.Success then
-                  Help.Print_Error (To_String (Gen_Res.Error));
+               if not Settings_Res.Success then
+                  Help.Print_Error (To_String (Settings_Res.Error));
                   return 1;
                end if;
 
-               Writer.Write_Buffers
-                 (Dir       => To_String (Output_Dir),
-                  Code_Spec => Gen_Res.Output.Code_Spec,
-                  Code_Body => Gen_Res.Output.Code_Body,
-                  Test_Spec => Gen_Res.Output.Test_Spec,
-                  Test_Body => Gen_Res.Output.Test_Body,
-                  Dry_Run   => Dry_Run);
+               declare
+                  S       : UML2Code.Settings := Settings_Res.Output;
+                  Gen_Res : UML2Code.Generate_Results.Result;
+               begin
+                  if Length (Author_Override) > 0 then
+                     S.Author := Author_Override;
+                  end if;
+                  if Length (Company_Override) > 0 then
+                     S.Company := Company_Override;
+                  end if;
+
+                  Gen_Res := UML2Code.Generate (Parse_Res.Output, S);
+                  if not Gen_Res.Success then
+                     Help.Print_Error (To_String (Gen_Res.Error));
+                     return 1;
+                  end if;
+
+                  Writer.Write_Buffers
+                    (Dir       => To_String (Output_Dir),
+                     Code_Spec => Gen_Res.Output.Code_Spec,
+                     Code_Body => Gen_Res.Output.Code_Body,
+                     Test_Spec => Gen_Res.Output.Test_Spec,
+                     Test_Body => Gen_Res.Output.Test_Body,
+                     Dry_Run   => Dry_Run);
+               end;
             end;
          end;
          return 0;
@@ -316,8 +324,7 @@ package body UML2Code.CLI is
             return Handle_Dump;
          else
             Help.Print_Error ("unknown command: " & First);
-            Ada.Text_IO.Put_Line
-              ("Run `" & App_Name & " help` for usage.");
+            Ada.Text_IO.Put_Line ("Run `" & App_Name & " help` for usage.");
             return 2;
          end if;
       end;

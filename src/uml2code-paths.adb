@@ -13,7 +13,7 @@ package body UML2Code.Paths is
    function Find_Executable_Dir return String is
       Name : constant String := Ada.Command_Line.Command_Name;
    begin
-      if Index (Name, (1 => Separator)) > 0 then
+      if Index (Name, [1 => Separator]) > 0 then
          declare
             Full : constant String := Containing_Directory (Name);
          begin
@@ -41,7 +41,7 @@ package body UML2Code.Paths is
                     (if Stop >= Start then Path (Start .. Stop) else "");
                   Candidate : constant String :=
                     (if Dir'Length > 0
-                     then Dir & (1 => Separator) & Name
+                     then Dir & [1 => Separator] & Name
                      else Name);
                begin
                   if Candidate'Length > 0 and then Exists (Candidate) then
@@ -68,13 +68,12 @@ package body UML2Code.Paths is
          Srch : Search_Type;
          Ent  : Directory_Entry_Type;
       begin
-         Start_Search (Srch, Dir, "",
-                       (Directory => True, others => False));
+         Start_Search (Srch, Dir, "", [Directory => True, others => False]);
          while More_Entries (Srch) loop
             Get_Next_Entry (Srch, Ent);
             declare
                Sub : constant String :=
-                 Full_Name (Ent) & (1 => Separator) & "manifest.ini";
+                 Full_Name (Ent) & [1 => Separator] & "manifest.ini";
             begin
                if Exists (Sub) then
                   End_Search (Srch);
@@ -92,25 +91,45 @@ package body UML2Code.Paths is
       Cwd     : constant String := Current_Directory;
 
       Candidates : constant array (Positive range <>) of Unbounded_String :=
-        (1 => To_Unbounded_String
-                (Ada.Environment_Variables.Value ("UML2CODE_TEMPLATES", "")),
-         2 => To_Unbounded_String
-                (Exe_Dir & (1 => Separator) & ".." & (1 => Separator)
-                 & "share" & (1 => Separator) & "uml2code" & (1 => Separator)
-                 & "templates"),
-         3 => To_Unbounded_String
-                (Exe_Dir & (1 => Separator) & ".." & (1 => Separator)
-                 & "resources" & (1 => Separator) & "templates"),
-         4 => To_Unbounded_String
-                (Exe_Dir & (1 => Separator) & "resources" & (1 => Separator)
-                 & "templates"),
-         5 => To_Unbounded_String
-                (Cwd & (1 => Separator) & "resources" & (1 => Separator)
-                 & "templates"),
-         6 => To_Unbounded_String
-                (Cwd & (1 => Separator) & "templates"));
-
-      Tried : Unbounded_String;
+        [1 =>
+           To_Unbounded_String
+             (Ada.Environment_Variables.Value ("UML2CODE_TEMPLATES", "")),
+         2 =>
+           To_Unbounded_String
+             (Exe_Dir
+              & [1 => Separator]
+              & ".."
+              & [1 => Separator]
+              & "share"
+              & [1 => Separator]
+              & "uml2code"
+              & [1 => Separator]
+              & "templates"),
+         3 =>
+           To_Unbounded_String
+             (Exe_Dir
+              & [1 => Separator]
+              & ".."
+              & [1 => Separator]
+              & "resources"
+              & [1 => Separator]
+              & "templates"),
+         4 =>
+           To_Unbounded_String
+             (Exe_Dir
+              & [1 => Separator]
+              & "resources"
+              & [1 => Separator]
+              & "templates"),
+         5 =>
+           To_Unbounded_String
+             (Cwd
+              & [1 => Separator]
+              & "resources"
+              & [1 => Separator]
+              & "templates"),
+         6 => To_Unbounded_String (Cwd & [1 => Separator] & "templates")];
+      Tried      : Unbounded_String;
    begin
       for C of Candidates loop
          declare
@@ -118,20 +137,22 @@ package body UML2Code.Paths is
          begin
             if S'Length > 0 then
                if Has_Manifest (S) then
-                  return (Success => True,
-                          Root    => To_Unbounded_String (S));
+                  return (Success => True, Root => To_Unbounded_String (S));
                end if;
                Append (Tried, S & ASCII.LF);
             end if;
          end;
       end loop;
 
-      return (Success => False,
-              Error   => Make_Error
-                (No_Location,
-                 "templates root not found. Tried:" & ASCII.LF
-                 & To_String (Tried)
-                 & "Set UML2CODE_TEMPLATES to override."));
+      return
+        (Success => False,
+         Error   =>
+           Make_Error
+             (No_Location,
+              "templates root not found. Tried:"
+              & ASCII.LF
+              & To_String (Tried)
+              & "Set UML2CODE_TEMPLATES to override."));
    end Find_Templates_Root;
 
 end UML2Code.Paths;

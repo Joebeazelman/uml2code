@@ -12,13 +12,6 @@ tags = ["uml", "code-generation", "ada"]
 plantuml_parser = "*"
 uml_model = "*"
 jintp = "*"
-
-[[pins]]
-uml_model = { path='../uml_model' }
-plantuml_parser = { path='../plantuml_parser' }
-
-
-[[depends-on]]
 aunit = "*"
 
 [[actions]]
@@ -27,3 +20,6 @@ command = ["sh", "-c", "alr exec -- gprbuild -P tests/uml2code_tests.gpr -p && .
 
 [[pins]]
 jintp = { path='../JinTP' }
+uml_model = { path='../uml_model' }
+plantuml_parser = { path='../plantuml_parser' }
+string_utilities = { path='../string_utilities' }

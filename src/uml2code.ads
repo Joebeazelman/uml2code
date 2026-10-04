@@ -25,8 +25,9 @@ package UML2Code is
    package Generate_Results is new Results (Output_Type => Generated_Output);
 
    function Generate
-     (M : Model;
-      S : Settings := Empty_Settings)
+     (M        : Model;
+      S        : Settings := Empty_Settings;
+      Set_Name : String   := "")
      return Generate_Results.Result;
 
 end UML2Code;
